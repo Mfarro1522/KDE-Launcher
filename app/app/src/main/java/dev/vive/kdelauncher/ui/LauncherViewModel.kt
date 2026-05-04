@@ -326,6 +326,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _searchQuery.value = ""
     }
 
+    /**
+     * Reset the launcher to its initial home state:
+     * - Go to FAVORITES category
+     * - Clear any active search
+     * - Close settings panel
+     * Called when the user presses the home pill indicator.
+     */
+    fun resetToHome() {
+        _searchQuery.value = ""
+        _activeCategory.value = AppCategory.FAVORITES
+        _showSettings.value = false
+    }
+
+
     fun toggleProfile() {
         val newProfile = if (_currentProfile.value.type == ProfileType.PERSONAL)
             Profile.Work else Profile.Personal

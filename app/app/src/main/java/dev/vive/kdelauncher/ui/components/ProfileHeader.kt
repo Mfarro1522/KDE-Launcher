@@ -10,7 +10,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Work
@@ -62,14 +61,18 @@ fun ProfileHeader(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar + Name (tappable to switch profile)
+        // Avatar + Name
+        // Toggle is only available when there is NO real Android work profile.
+        // If a managed profile exists, Android handles the switching natively.
         Row(
             modifier = Modifier
                 .weight(1f)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onToggleProfile
+                .then(
+                    if (!hasRealWorkProfile) Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onToggleProfile
+                    ) else Modifier
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -109,25 +112,20 @@ fun ProfileHeader(
                     style = LauncherTypography.titleMedium,
                     color = colors.onBackground
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = if (hasRealWorkProfile) "Perfil de trabajo detectado"
-                               else "Cambiar perfil",
-                        style = LauncherTypography.bodySmall,
-                        color = if (hasRealWorkProfile) accent.primary
-                                else colors.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
-                    if (hasRealWorkProfile && isWorkProfileLocked) {
-                        Icon(
-                            Icons.Rounded.Lock, null,
-                            modifier = Modifier.size(10.dp),
-                            tint = colors.onSurfaceVariant
+                // Only show the toggle hint when there is NO real Android work profile.
+                // If hasRealWorkProfile == true, the avatar icon + status dot already
+                // communicate the active profile — no extra label needed.
+                if (!hasRealWorkProfile) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Cambiar perfil",
+                            style = LauncherTypography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                            fontSize = 11.sp
                         )
-                    } else {
                         Icon(
                             Icons.Rounded.ChevronRight, null,
                             modifier = Modifier.size(12.dp),
