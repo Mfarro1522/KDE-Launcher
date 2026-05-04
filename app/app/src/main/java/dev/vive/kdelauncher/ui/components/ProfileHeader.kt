@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Work
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.data.model.Profile
 import dev.vive.kdelauncher.data.model.ProfileType
 import dev.vive.kdelauncher.ui.theme.LauncherColors
@@ -36,6 +38,8 @@ fun ProfileHeader(
     onToggleProfile: () -> Unit,
     onToggleSettings: () -> Unit,
     showSettingsActive: Boolean,
+    hasRealWorkProfile: Boolean = false,
+    isWorkProfileLocked: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val accent = LocalLauncherAccent.current
@@ -107,18 +111,29 @@ fun ProfileHeader(
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "Cambiar perfil",
+                        text = if (hasRealWorkProfile) "Perfil de trabajo detectado"
+                               else "Cambiar perfil",
                         style = LauncherTypography.bodySmall,
-                        color = colors.onSurfaceVariant
+                        color = if (hasRealWorkProfile) accent.primary
+                                else colors.onSurfaceVariant,
+                        fontSize = 11.sp
                     )
-                    Icon(
-                        Icons.Rounded.ChevronRight, null,
-                        modifier = Modifier.size(12.dp),
-                        tint = colors.onSurfaceVariant
-                    )
+                    if (hasRealWorkProfile && isWorkProfileLocked) {
+                        Icon(
+                            Icons.Rounded.Lock, null,
+                            modifier = Modifier.size(10.dp),
+                            tint = colors.onSurfaceVariant
+                        )
+                    } else {
+                        Icon(
+                            Icons.Rounded.ChevronRight, null,
+                            modifier = Modifier.size(12.dp),
+                            tint = colors.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
