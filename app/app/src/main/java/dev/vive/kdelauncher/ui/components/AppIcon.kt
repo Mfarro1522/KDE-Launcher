@@ -44,7 +44,7 @@ fun AppIcon(
         animationSpec = tween(100), label = "appScale"
     )
 
-    val imageBitmap = remember(app.packageName) {
+    val imageBitmap = remember(app.packageName, app.profileTag) {
         app.iconBitmap?.asImageBitmap()
     }
 

@@ -1,6 +1,7 @@
 package dev.vive.kdelauncher.data.model
 
 import android.graphics.Bitmap
+import android.os.UserHandle
 
 /**
  * Represents a single launchable application on the device.
@@ -13,7 +14,8 @@ data class AppModel(
     val iconBitmap: Bitmap?,
     val category: AppCategory = AppCategory.ALL,
     val isFavorite: Boolean = false,
-    val profileTag: ProfileType = ProfileType.PERSONAL
+    val profileTag: ProfileType = ProfileType.PERSONAL,
+    val userHandle: UserHandle? = null
 )
 
 /**

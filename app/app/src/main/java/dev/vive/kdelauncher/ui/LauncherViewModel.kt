@@ -16,18 +16,21 @@ import dev.vive.kdelauncher.data.IconPackManager
 import dev.vive.kdelauncher.data.ProfileManager
 import dev.vive.kdelauncher.data.SettingsManager
 import dev.vive.kdelauncher.data.WorkProfileManager
+import dev.vive.kdelauncher.data.model.AppCategorizer
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.data.model.Profile
 import dev.vive.kdelauncher.data.model.ProfileType
 import dev.vive.kdelauncher.data.repository.AppRepository
 import dev.vive.kdelauncher.ui.components.CategoryConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Complete UI state for the launcher screen.
@@ -153,9 +156,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
         // Annotate apps with favorite/work tags — no I/O, pure in-memory ops
         val appsWithMeta = allApps.map { app ->
+            val isWorkApp = if (hasWork) app.userHandle != null
+            else workApps.contains(app.packageName)
             app.copy(
                 isFavorite = favorites.contains(app.packageName),
-                profileTag = if (workApps.contains(app.packageName))
+                profileTag = if (isWorkApp)
                     ProfileType.WORK else ProfileType.PERSONAL
             )
         }
@@ -236,13 +241,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 _isLoading.value = true
 
                 // Phase 1: names and categories only — nearly instant
-                _allApps.value = appRepository.getInstalledAppsMetadata()
+                val personalMeta = appRepository.getInstalledAppsMetadata()
+                val workMeta = loadWorkApps(loadIcons = false)
+                _allApps.value = mergeApps(personalMeta, workMeta)
                 _isLoading.value = false   // UI is usable now
 
                 // Phase 2: icons (from cache if available, decode otherwise)
-                _allApps.value = appRepository.getInstalledApps(
+                val personalFull = appRepository.getInstalledApps(
                     selectedIconPack = _selectedIconPack.value
                 )
+                val workFull = loadWorkApps(loadIcons = true)
+                _allApps.value = mergeApps(personalFull, workFull)
             } catch (e: Exception) {
                 e.printStackTrace()
                 _allApps.value = emptyList()
@@ -250,6 +259,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 _isLoading.value = false
             }
         }
+    }
+
+    private suspend fun loadWorkApps(loadIcons: Boolean): List<AppModel> {
+        return withContext(Dispatchers.IO) {
+            if (!workProfileManager.hasRealWorkProfile()) return@withContext emptyList()
+
+            workProfileManager.getWorkProfileApps(loadIcons).map { app ->
+                AppModel(
+                    packageName = app.packageName,
+                    activityName = app.activityName,
+                    label = app.label,
+                    iconBitmap = app.iconBitmap,
+                    category = AppCategorizer.categorize(app.packageName, app.androidCategory),
+                    userHandle = app.userHandle
+                )
+            }
+        }
+    }
+
+    private fun mergeApps(
+        personalApps: List<AppModel>,
+        workApps: List<AppModel>
+    ): List<AppModel> {
+        return (personalApps + workApps).sortedBy { it.label.lowercase() }
     }
 
     private fun loadIconPacks() {
@@ -421,6 +454,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun launchApp(app: AppModel) {
+        val userHandle = app.userHandle
+        if (userHandle != null) {
+            workProfileManager.launchWorkApp(
+                packageName = app.packageName,
+                activityName = app.activityName,
+                userHandle = userHandle
+            )
+            return
+        }
+
         val intent = appRepository.getLaunchIntent(app.packageName)
         if (intent != null) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

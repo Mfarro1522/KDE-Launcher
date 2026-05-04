@@ -102,7 +102,7 @@ fun AppGrid(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
             ) {
-                items(apps, key = { it.packageName }) { app ->
+                items(apps, key = { "${it.packageName}:${it.profileTag.name}" }) { app ->
                     AppIcon(
                         app = app,
                         onClick = { onAppClick(app) },

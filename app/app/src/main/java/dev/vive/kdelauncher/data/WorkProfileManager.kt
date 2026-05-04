@@ -2,9 +2,11 @@ package dev.vive.kdelauncher.data
 
 import android.content.Context
 import android.content.pm.LauncherApps
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
+import androidx.core.graphics.drawable.toBitmap
 
 /**
  * Detects and manages Android's real Work Profile (managed profile via MDM/Enterprise).
@@ -27,11 +29,7 @@ class WorkProfileManager(private val context: Context) {
      */
     fun hasRealWorkProfile(): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                userManager.userProfiles.size > 1
-            } else {
-                false
-            }
+            getWorkProfileHandle() != null
         } catch (e: Exception) {
             false
         }
@@ -44,7 +42,11 @@ class WorkProfileManager(private val context: Context) {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val myHandle = android.os.Process.myUserHandle()
-                userManager.userProfiles.firstOrNull { it != myHandle }
+                val launcherApps =
+                    context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+                val launcherProfiles = launcherApps.profiles
+                val fromLauncher = launcherProfiles.firstOrNull { it != myHandle }
+                fromLauncher ?: userManager.userProfiles.firstOrNull { it != myHandle }
             } else {
                 null
             }
@@ -59,7 +61,7 @@ class WorkProfileManager(private val context: Context) {
      *
      * Returns empty list if no work profile exists or permission is denied.
      */
-    fun getWorkProfileApps(): List<WorkProfileApp> {
+    fun getWorkProfileApps(loadIcons: Boolean = true): List<WorkProfileApp> {
         if (!hasRealWorkProfile()) return emptyList()
 
         return try {
@@ -70,11 +72,22 @@ class WorkProfileManager(private val context: Context) {
                 launcherApps
                     .getActivityList(null, workHandle)
                     .map { activity ->
+                        val iconBitmap = if (loadIcons) {
+                            try {
+                                activity.getIcon(0)?.toBitmap(56, 56)
+                            } catch (_: Exception) {
+                                null
+                            }
+                        } else {
+                            null
+                        }
                         WorkProfileApp(
                             packageName = activity.applicationInfo.packageName,
                             activityName = activity.name,
                             label = activity.label.toString(),
-                            userHandle = workHandle
+                            userHandle = workHandle,
+                            iconBitmap = iconBitmap,
+                            androidCategory = activity.applicationInfo.category
                         )
                     }
             } else {
@@ -92,12 +105,16 @@ class WorkProfileManager(private val context: Context) {
      * Launch an app from the work profile using LauncherApps + its UserHandle.
      * Regular startActivity() won't work for cross-profile launches.
      */
-    fun launchWorkApp(app: WorkProfileApp): Boolean {
+    fun launchWorkApp(
+        packageName: String,
+        activityName: String,
+        userHandle: UserHandle
+    ): Boolean {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-                val component = android.content.ComponentName(app.packageName, app.activityName)
-                launcherApps.startMainActivity(component, app.userHandle, null, null)
+                val component = android.content.ComponentName(packageName, activityName)
+                launcherApps.startMainActivity(component, userHandle, null, null)
                 true
             } else {
                 false
@@ -135,5 +152,7 @@ data class WorkProfileApp(
     val packageName: String,
     val activityName: String,
     val label: String,
-    val userHandle: UserHandle
+    val userHandle: UserHandle,
+    val iconBitmap: Bitmap?,
+    val androidCategory: Int
 )

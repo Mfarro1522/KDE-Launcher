@@ -61,18 +61,13 @@ fun ProfileHeader(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar + Name
-        // Toggle is only available when there is NO real Android work profile.
-        // If a managed profile exists, Android handles the switching natively.
         Row(
             modifier = Modifier
                 .weight(1f)
-                .then(
-                    if (!hasRealWorkProfile) Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onToggleProfile
-                    ) else Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onToggleProfile
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -112,26 +107,21 @@ fun ProfileHeader(
                     style = LauncherTypography.titleMedium,
                     color = colors.onBackground
                 )
-                // Only show the toggle hint when there is NO real Android work profile.
-                // If hasRealWorkProfile == true, the avatar icon + status dot already
-                // communicate the active profile — no extra label needed.
-                if (!hasRealWorkProfile) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "Cambiar perfil",
-                            style = LauncherTypography.bodySmall,
-                            color = colors.onSurfaceVariant,
-                            fontSize = 11.sp
-                        )
-                        Icon(
-                            Icons.Rounded.ChevronRight, null,
-                            modifier = Modifier.size(12.dp),
-                            tint = colors.onSurfaceVariant
-                        )
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Cambiar perfil",
+                        style = LauncherTypography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                    Icon(
+                        Icons.Rounded.ChevronRight, null,
+                        modifier = Modifier.size(12.dp),
+                        tint = colors.onSurfaceVariant
+                    )
                 }
             }
         }
