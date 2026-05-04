@@ -13,6 +13,10 @@ jobs:
     name: Build & Publish APK
     runs-on: ubuntu-latest
 
+    # ── Permisos para crear releases ──────────────────────────
+    permissions:
+      contents: write
+
     defaults:
       run:
         working-directory: app
@@ -34,18 +38,21 @@ jobs:
       - name: 🔑 Dar permisos a gradlew
         run: chmod +x gradlew
 
-      - name: 🗑️ Eliminar local.properties (usa el SDK del runner)
+      - name: 🗑️ Eliminar local.properties
         run: rm -f local.properties
 
       - name: 🔨 Compilar APK debug
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: 📦 Renombrar APK con versión
+      - name: 📦 Copiar APK a artifacts/
+        # working-directory es "app/" → "../artifacts" queda en la raíz del repo
         run: |
           VERSION=${{ github.ref_name }}
-          mkdir -p ../../artifacts
+          mkdir -p ../artifacts
           cp app/build/outputs/apk/debug/app-debug.apk \
-             ../../artifacts/VoidLauncher_${VERSION}.apk
+             ../artifacts/VoidLauncher_${VERSION}.apk
+          echo "APK copiado:"
+          ls -lh ../artifacts/
 
       - name: 🚀 Publicar GitHub Release
         uses: softprops/action-gh-release@v2
@@ -53,13 +60,14 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Vøid Launcher ${{ github.ref_name }}"
           generate_release_notes: true
+          # Ruta relativa a la RAÍZ del repo (no al working-directory)
           files: artifacts/VoidLauncher_${{ github.ref_name }}.apk
           body: |
             ## Vøid Launcher ${{ github.ref_name }}
 
             ### 📲 Instalación
             1. Descarga el **APK** desde Assets aquí abajo
-            2. En Android → Ajustes → Seguridad → Fuentes desconocidas ✓
+            2. Android → Ajustes → Seguridad → Fuentes desconocidas ✓
             3. Instala y ponlo como launcher predeterminado
 
             ### ⚙️ Requisitos
