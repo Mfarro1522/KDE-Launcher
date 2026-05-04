@@ -108,15 +108,17 @@ class WorkProfileManager(private val context: Context) {
     }
 
     /**
-     * Check if the work profile is currently locked/paused.
-     * When locked, work apps are not launchable until the user unlocks.
+     * Check if the work profile is currently paused/locked (quiet mode).
+     * When in quiet mode, work apps are not launchable until the user unlocks.
+     *
+     * Uses UserManager.isQuietModeEnabled() — available since API 24 (our minSdk is 26).
+     * Quiet mode == the work profile is paused/suspended by the user or MDM.
      */
     fun isWorkProfileLocked(): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-                val workHandle = getWorkProfileHandle() ?: return false
-                !launcherApps.isProfileEnabled(workHandle)
+            val workHandle = getWorkProfileHandle() ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                userManager.isQuietModeEnabled(workHandle)
             } else {
                 false
             }
