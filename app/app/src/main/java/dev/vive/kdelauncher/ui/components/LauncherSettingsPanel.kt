@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.data.IconPackInfo
 import dev.vive.kdelauncher.data.model.AppCategory
+import dev.vive.kdelauncher.ui.components.IconSize
 import dev.vive.kdelauncher.ui.theme.LocalColors
 import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
@@ -51,11 +52,19 @@ data class CategoryConfig(
 @Composable
 fun LauncherSettingsPanel(
     isDarkTheme: Boolean,
+    showAppLabels: Boolean,
+    iconSize: IconSize,
+    showIconBackground: Boolean,
+    gridColumns: Int,
     categoryConfigs: List<CategoryConfig>,
     installedIconPacks: List<IconPackInfo>,
     selectedIconPack: String?,
     isLoadingIconPacks: Boolean,
     onToggleTheme: () -> Unit,
+    onToggleAppLabels: () -> Unit,
+    onIconSizeChange: (IconSize) -> Unit,
+    onIconBackgroundToggle: () -> Unit,
+    onGridColumnsChange: (Int) -> Unit,
     onCategoryRename: (AppCategory, String) -> Unit,
     onCategoryIconChange: (AppCategory, String) -> Unit,
     onCategoryToggleHidden: (AppCategory) -> Unit,
@@ -143,6 +152,287 @@ fun LauncherSettingsPanel(
                     uncheckedThumbColor = colors.onSurfaceVariant,
                     uncheckedTrackColor = colors.surfaceVariant,
                 )
+            )
+        }
+
+        // ── Divider ──────────────────────────────────────
+        HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
+
+        // ── App Label Toggle ─────────────────────────────
+        SectionLabel("Contenido")
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onToggleAppLabels
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accent.primaryBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.TextFields,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = accent.primary
+                    )
+                }
+                Column {
+                    Text(
+                        text = if (showAppLabels) "Mostrar nombres de apps"
+                        else "Ocultar nombres de apps",
+                        style = LauncherTypography.bodyMedium,
+                        color = colors.onBackground
+                    )
+                    Text(
+                        text = "Toca para cambiar",
+                        style = LauncherTypography.bodySmall,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+            Switch(
+                checked = showAppLabels,
+                onCheckedChange = { onToggleAppLabels() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = accent.primary,
+                    checkedTrackColor = accent.primaryBg,
+                    uncheckedThumbColor = colors.onSurfaceVariant,
+                    uncheckedTrackColor = colors.surfaceVariant,
+                )
+            )
+        }
+
+        // ── Divider ──────────────────────────────────────
+        HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
+
+        // ── Icon Settings ─────────────────────────────────
+        SectionLabel("Íconos")
+
+        // Icon size selector
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Tamaño",
+                style = LauncherTypography.bodySmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                IconSize.values().forEach { size ->
+                    val isSelected = iconSize == size
+                    val sizeLabel = when (size) {
+                        IconSize.SMALL -> "Pequeño"
+                        IconSize.MEDIUM -> "Mediano"
+                        IconSize.LARGE -> "Grande"
+                    }
+                    val (containerSize, _) = getIconDimensions(size)
+                    
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (isSelected) accent.primaryBg
+                                else colors.surfaceVariant.copy(alpha = 0.3f)
+                            )
+                            .border(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) accent.primary
+                                else colors.border.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onIconSizeChange(size) }
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(containerSize.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (showIconBackground) 
+                                            colors.surfaceVariant.copy(alpha = 0.8f)
+                                        else 
+                                            colors.surface.copy(alpha = 0.5f)
+                                    )
+                                    .then(
+                                        if (showIconBackground) {
+                                            Modifier.border(
+                                                width = 1.dp,
+                                                color = colors.border.copy(alpha = 0.5f),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Android,
+                                    contentDescription = null,
+                                    modifier = Modifier.size((containerSize * 0.6f).dp),
+                                    tint = colors.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            }
+                            Text(
+                                text = sizeLabel,
+                                style = LauncherTypography.bodySmall,
+                                color = if (isSelected) accent.primary else colors.onBackground
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Icon background toggle
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onIconBackgroundToggle
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accent.primaryBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Widgets,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = accent.primary
+                    )
+                }
+                Column {
+                    Text(
+                        text = if (showIconBackground) "Mostrar fondo de íconos"
+                        else "Ocultar fondo de íconos",
+                        style = LauncherTypography.bodyMedium,
+                        color = colors.onBackground
+                    )
+                    Text(
+                        text = "Toca para cambiar",
+                        style = LauncherTypography.bodySmall,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+            Switch(
+                checked = showIconBackground,
+                onCheckedChange = { onIconBackgroundToggle() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = accent.primary,
+                    checkedTrackColor = accent.primaryBg,
+                    uncheckedThumbColor = colors.onSurfaceVariant,
+                    uncheckedTrackColor = colors.surfaceVariant,
+                )
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Grid columns selector
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Columnas de cuadrícula",
+                style = LauncherTypography.bodySmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val (minCols, maxCols) = calculateColumnRange(iconSize, showIconBackground)
+                (minCols..maxCols).forEach { cols ->
+                    val isSelected = gridColumns == cols
+                    
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (isSelected) accent.primaryBg
+                                else colors.surfaceVariant.copy(alpha = 0.3f)
+                            )
+                            .border(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) accent.primary
+                                else colors.border.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onGridColumnsChange(cols) }
+                            .padding(10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "$cols",
+                                style = LauncherTypography.titleMedium,
+                                color = if (isSelected) accent.primary else colors.onBackground
+                            )
+                            Text(
+                                text = if (cols == 1) "columna" else "columnas",
+                                style = LauncherTypography.bodySmall,
+                                color = colors.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+            // Info text about column limits
+            Text(
+                text = "El rango de columnas se ajusta según el tamaño y fondo de íconos",
+                style = LauncherTypography.bodySmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.5f)
             )
         }
 
@@ -579,4 +869,51 @@ private fun IconPackRow(
             )
         }
     }
+}
+
+/**
+ * Calculates the valid range of grid columns based on icon size and background.
+ * 
+ * This ensures that icons don't overflow or overlap by considering:
+ * - Icon container size (based on icon size setting)
+ * - Horizontal padding (constant 4dp per side = 8dp total per icon)
+ * - Grid spacing (constant 4dp between icons)
+ * - Minimum safe space per column to prevent overflow
+ * 
+ * Returns Pair(minColumns, maxColumns)
+ */
+fun calculateColumnRange(iconSize: IconSize, showIconBackground: Boolean): Pair<Int, Int> {
+    val (containerSize, _) = getIconDimensions(iconSize)
+    
+    // Calculate minimum space needed per column
+    // Container size + horizontal padding (4dp each side) + some margin
+    val minSpacePerColumn = containerSize + 8f + 4f // 8dp padding + 4dp margin
+    
+    // Typical phone screen width in dp (conservative estimate)
+    val screenWidthDp = 360f
+    
+    // Calculate maximum possible columns
+    val maxPossible = (screenWidthDp / minSpacePerColumn).toInt().coerceAtLeast(1)
+    
+    // Calculate minimum columns based on icon size
+    // Larger icons need fewer columns minimum to prevent them from being too small
+    val minColumns = when (iconSize) {
+        IconSize.LARGE -> 2
+        IconSize.MEDIUM -> 3
+        IconSize.SMALL -> 4
+    }
+    
+    // Adjust based on background visibility
+    // Icons without background can be packed slightly tighter
+    val adjustedMax = if (!showIconBackground) {
+        maxPossible + 1
+    } else {
+        maxPossible
+    }
+    
+    // Ensure we have at least a reasonable range
+    val effectiveMin = minOf(minColumns, adjustedMax)
+    val effectiveMax = maxOf(effectiveMin + 1, adjustedMax).coerceAtMost(6)
+    
+    return Pair(effectiveMin, effectiveMax)
 }

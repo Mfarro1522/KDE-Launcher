@@ -128,11 +128,21 @@ fun LauncherScreen(
         ) {
             LauncherSettingsPanel(
                 isDarkTheme = uiState.isDarkTheme,
+                showAppLabels = uiState.showAppLabels,
+                iconSize = uiState.iconSize,
+                showIconBackground = uiState.showIconBackground,
+                gridColumns = uiState.gridColumns,
                 categoryConfigs = uiState.categoryConfigs,
                 installedIconPacks = uiState.installedIconPacks,
                 selectedIconPack = uiState.selectedIconPack,
                 isLoadingIconPacks = uiState.isLoadingIconPacks,
                 onToggleTheme = { viewModel.toggleTheme() },
+                onToggleAppLabels = {
+                    viewModel.setShowAppLabels(!uiState.showAppLabels)
+                },
+                onIconSizeChange = { viewModel.setIconSize(it) },
+                onIconBackgroundToggle = { viewModel.setShowIconBackground(!uiState.showIconBackground) },
+                onGridColumnsChange = { viewModel.setGridColumns(it) },
                 onCategoryRename = { cat, name -> viewModel.setCategoryDisplayName(cat, name) },
                 onCategoryIconChange = { cat, icon -> viewModel.setCategoryIconName(cat, icon) },
                 onCategoryToggleHidden = { viewModel.toggleCategoryHidden(it) },
@@ -185,10 +195,16 @@ fun LauncherScreen(
                 apps = uiState.filteredApps,
                 searchQuery = uiState.searchQuery,
                 activeCategory = uiState.activeCategory,
-                appCounts = uiState.appCounts,
                 categoryConfigs = uiState.categoryConfigs,
+                visibleCategories = uiState.visibleCategories,
+                showAppLabels = uiState.showAppLabels,
+                iconSize = uiState.iconSize,
+                showIconBackground = uiState.showIconBackground,
+                gridColumns = uiState.gridColumns,
                 onAppClick = { viewModel.launchApp(it) },
-                onAppLongClick = { viewModel.toggleFavorite(it) },
+                onToggleFavorite = { viewModel.toggleFavorite(it) },
+                onAssignCategory = { app, category -> viewModel.setCategoryOverride(app, category) },
+                onClearCategory = { viewModel.clearCategoryOverride(it) },
                 onRequestIcon = { viewModel.requestIconLoad(it) },
                 modifier = Modifier.weight(1f)
             )

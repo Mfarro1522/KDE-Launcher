@@ -2,7 +2,6 @@ package dev.vive.kdelauncher.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Text
@@ -14,22 +13,26 @@ import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
 import dev.vive.kdelauncher.ui.theme.LocalColors
-import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
 
 @Composable
 fun AppGrid(
     apps: List<AppModel>,
     searchQuery: String,
     activeCategory: AppCategory,
-    appCounts: Map<AppCategory, Int>,
     categoryConfigs: List<CategoryConfig>,
+    visibleCategories: List<AppCategory>,
+    showAppLabels: Boolean,
+    iconSize: IconSize = IconSize.MEDIUM,
+    showIconBackground: Boolean = true,
+    gridColumns: Int = 3,
     onAppClick: (AppModel) -> Unit,
-    onAppLongClick: (AppModel) -> Unit,
+    onToggleFavorite: (AppModel) -> Unit,
+    onAssignCategory: (AppModel, AppCategory) -> Unit,
+    onClearCategory: (AppModel) -> Unit,
     onRequestIcon: (AppModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
-    val accent = LocalLauncherAccent.current
     val config = categoryConfigs.find { it.category == activeCategory }
     val categoryName = config?.displayName ?: activeCategory.displayName
 
@@ -45,17 +48,12 @@ fun AppGrid(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Start,
             ) {
                 Text(
                     text = categoryName,
                     style = LauncherTypography.titleMedium,
                     color = colors.onBackground
-                )
-                Text(
-                    text = "${appCounts[activeCategory] ?: 0} apps",
-                    style = LauncherTypography.bodySmall,
-                    color = colors.onSurfaceVariant
                 )
             }
         } else {
@@ -69,12 +67,6 @@ fun AppGrid(
                     text = "Resultados",
                     style = LauncherTypography.titleMedium,
                     color = colors.onBackground
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "${apps.size} encontradas",
-                    style = LauncherTypography.bodySmall,
-                    color = colors.onSurfaceVariant
                 )
             }
         }
@@ -99,7 +91,7 @@ fun AppGrid(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Fixed(gridColumns),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
             ) {
@@ -107,8 +99,16 @@ fun AppGrid(
                     AppIcon(
                         app = app,
                         onClick = { onAppClick(app) },
-                        onLongClick = { onAppLongClick(app) },
-                        onRequestIcon = onRequestIcon
+                        onToggleFavorite = { onToggleFavorite(app) },
+                        onAssignCategory = { category -> onAssignCategory(app, category) },
+                        onClearCategory = { onClearCategory(app) },
+                        onRequestIcon = onRequestIcon,
+                        activeCategory = activeCategory,
+                        categoryConfigs = categoryConfigs,
+                        visibleCategories = visibleCategories,
+                        showLabel = showAppLabels,
+                        iconSize = iconSize,
+                        showIconBackground = showIconBackground
                     )
                 }
             }

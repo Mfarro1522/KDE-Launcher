@@ -23,6 +23,8 @@ import dev.vive.kdelauncher.data.model.Profile
 import dev.vive.kdelauncher.data.model.ProfileType
 import dev.vive.kdelauncher.data.repository.AppRepository
 import dev.vive.kdelauncher.ui.components.CategoryConfig
+import dev.vive.kdelauncher.ui.components.IconSize
+import dev.vive.kdelauncher.ui.components.parseIconSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,11 +46,16 @@ data class LauncherUiState(
     val activeCategory: AppCategory = AppCategory.FAVORITES,
     val currentProfile: Profile = Profile.Personal,
     val isDarkTheme: Boolean = true,
+    val showAppLabels: Boolean = true,
     val showSettings: Boolean = false,
     val isLoading: Boolean = true,
     val appCounts: Map<AppCategory, Int> = emptyMap(),
     val categoryConfigs: List<CategoryConfig> = emptyList(),
     val visibleCategories: List<AppCategory> = AppCategory.entries,
+    // Icon settings
+    val iconSize: IconSize = IconSize.MEDIUM,
+    val showIconBackground: Boolean = true,
+    val gridColumns: Int = 3,
     // Icon packs
     val installedIconPacks: List<IconPackInfo> = emptyList(),
     val selectedIconPack: String? = null,
@@ -75,6 +82,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // ── Profile & theme ──────────────────────────────────────────────────────
     private val _currentProfile = MutableStateFlow(profileManager.getActiveProfile())
     private val _isDarkTheme = MutableStateFlow(settingsManager.isDarkTheme())
+    private val _showAppLabels = MutableStateFlow(settingsManager.isShowAppLabels())
     private val _showSettings = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(true)
     private val _homeResetCounter = MutableStateFlow(0)
@@ -91,11 +99,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // ── Category settings — same: only updated when settings actually change ─
     private val _categoryConfigs = MutableStateFlow(buildCategoryConfigs())
     private val _visibleCategories = MutableStateFlow(buildVisibleCategories())
+    private val _categoryOverrides =
+        MutableStateFlow(settingsManager.getCategoryOverrides())
 
     // ── Icon packs ───────────────────────────────────────────────────────────
     private val _installedIconPacks = MutableStateFlow<List<IconPackInfo>>(emptyList())
     private val _selectedIconPack = MutableStateFlow(settingsManager.getSelectedIconPack())
     private val _isLoadingIconPacks = MutableStateFlow(false)
+
+    // ── Icon settings ────────────────────────────────────────────────────────
+    private val _iconSize = MutableStateFlow(parseIconSize(settingsManager.getIconSize()))
+    private val _showIconBackground = MutableStateFlow(settingsManager.isShowIconBackground())
+    private val _gridColumns = MutableStateFlow(settingsManager.getGridColumns())
 
     // ── System status ────────────────────────────────────────────────────────
     private val _isDefaultLauncher = MutableStateFlow(true)
@@ -111,9 +126,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     /** Profile + theme + UI toggles + loading state */
     private val _secondaryState = combine(
-        _currentProfile, _isDarkTheme, _showSettings, _isLoading
-    ) { profile, dark, settings, loading ->
-        listOf<Any>(profile, dark, settings, loading)
+        _currentProfile, _isDarkTheme, _showAppLabels, _showSettings, _isLoading
+    ) { profile, dark, showLabels, settings, loading ->
+        listOf<Any>(profile, dark, showLabels, settings, loading)
     }
 
     /** Icon pack state */
@@ -121,6 +136,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _installedIconPacks, _selectedIconPack, _isLoadingIconPacks
     ) { packs, selected, loading ->
         Triple(packs, selected, loading)
+    }
+
+    /** Icon settings (size, background, columns) */
+    private val _iconSettingsState = combine(
+        _iconSize, _showIconBackground, _gridColumns
+    ) { size, showBg, cols ->
+        Triple(size, showBg, cols)
     }
 
     /** Device/launcher status */
@@ -133,40 +155,55 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** Favorites + work tags (avoids SharedPrefs reads inside the main combine) */
     private val _profileData = combine(_favorites, _workApps) { fav, work -> fav to work }
 
+    /** Category config + visibility + per-app overrides */
+    private val _categoryState = combine(
+        _categoryConfigs, _visibleCategories, _categoryOverrides
+    ) { configs, visible, overrides ->
+        Triple(configs, visible, overrides)
+    }
+
     // ── Main UI state ────────────────────────────────────────────────────────
 
     val uiState: StateFlow<LauncherUiState> = combine(
         combine(_allApps, _searchQuery) { apps, q -> apps to q },
-        combine(_activeCategory, _iconPackState) { cat, ipState -> cat to ipState },
+        combine(_activeCategory, _iconPackState, _iconSettingsState) { cat, ipState, iconSettings -> Triple(cat, ipState, iconSettings) },
         combine(_secondaryState, _statusState) { sec, stat -> sec to stat },
-        combine(_profileData, combine(_categoryConfigs, _visibleCategories) { c, v -> c to v }) { pd, cv -> pd to cv }
-    ) { (allApps, query), (category, ipState), (secondary, status), (profileData, catData) ->
+        combine(_profileData, _categoryState) { pd, cs -> pd to cs }
+    ) { (allApps, query), (category, ipState, iconSettingsData), (secondary, status), (profileData, catData) ->
 
         val profile = secondary[0] as Profile
         val isDark = secondary[1] as Boolean
-        val showSettings = secondary[2] as Boolean
-        val loading = secondary[3] as Boolean
+        val showLabels = secondary[2] as Boolean
+        val showSettings = secondary[3] as Boolean
+        val loading = secondary[4] as Boolean
 
         @Suppress("UNCHECKED_CAST")
         val installedPacks = ipState.first as List<IconPackInfo>
         val selectedPack = ipState.second as String?
         val loadingPacks = ipState.third as Boolean
 
+        val iconSize = iconSettingsData.first as IconSize
+        val showIconBackground = iconSettingsData.second as Boolean
+        val gridColumns = iconSettingsData.third as Int
+
         val isDefault = status.first
         val hasWork = status.second
         val workLocked = status.third
 
         val (favorites, workApps) = profileData
-        val (categoryConfigs, visibleCategories) = catData
+        val (categoryConfigs, visibleCategories, categoryOverrides) = catData
 
         // Annotate apps with favorite/work tags — no I/O, pure in-memory ops
         val appsWithMeta = allApps.map { app ->
             val isWorkApp = if (hasWork) app.userHandle != null
             else workApps.contains(app.packageName)
+            val overrideKey = categoryOverrideKey(app, isWorkApp)
+            val overrideCategory = categoryOverrides[overrideKey]
             app.copy(
                 isFavorite = favorites.contains(app.packageName),
                 profileTag = if (isWorkApp)
-                    ProfileType.WORK else ProfileType.PERSONAL
+                    ProfileType.WORK else ProfileType.PERSONAL,
+                category = overrideCategory ?: app.category
             )
         }
 
@@ -201,11 +238,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             activeCategory = category,
             currentProfile = profile,
             isDarkTheme = isDark,
+            showAppLabels = showLabels,
             showSettings = showSettings,
             isLoading = loading,
             appCounts = counts,
             categoryConfigs = categoryConfigs,
             visibleCategories = visibleCategories,
+            iconSize = iconSize,
+            showIconBackground = showIconBackground,
+            gridColumns = gridColumns,
             installedIconPacks = installedPacks,
             selectedIconPack = selectedPack,
             isLoadingIconPacks = loadingPacks,
@@ -415,6 +456,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         settingsManager.setDarkTheme(newVal)
     }
 
+    fun setShowAppLabels(show: Boolean) {
+        _showAppLabels.value = show
+        settingsManager.setShowAppLabels(show)
+    }
+
+    fun setIconSize(size: IconSize) {
+        _iconSize.value = size
+        settingsManager.setIconSize(size.name.lowercase())
+    }
+
+    fun setShowIconBackground(show: Boolean) {
+        _showIconBackground.value = show
+        settingsManager.setShowIconBackground(show)
+    }
+
+    fun setGridColumns(columns: Int) {
+        _gridColumns.value = columns
+        settingsManager.setGridColumns(columns)
+    }
+
     fun setCategoryDisplayName(category: AppCategory, name: String) {
         settingsManager.setCategoryDisplayName(category, name)
         _categoryConfigs.value = buildCategoryConfigs()
@@ -435,9 +496,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun resetSettings() {
         settingsManager.resetAll()
         _isDarkTheme.value = true
+        _showAppLabels.value = settingsManager.isShowAppLabels()
         _selectedIconPack.value = null
         appRepository.clearIconPackCache()
         bumpIconGeneration()
+        _categoryOverrides.value = emptyMap()
         _categoryConfigs.value = buildCategoryConfigs()
         _visibleCategories.value = buildVisibleCategories()
         loadApps()
@@ -449,6 +512,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         appRepository.clearIconPackCache()
         bumpIconGeneration()
         loadApps()
+    }
+
+    fun setCategoryOverride(app: AppModel, category: AppCategory) {
+        val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
+        val key = categoryOverrideKey(app, isWorkApp)
+        settingsManager.setCategoryOverride(key, category)
+        _categoryOverrides.value = settingsManager.getCategoryOverrides()
+    }
+
+    fun clearCategoryOverride(app: AppModel) {
+        val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
+        val key = categoryOverrideKey(app, isWorkApp)
+        settingsManager.clearCategoryOverride(key)
+        _categoryOverrides.value = settingsManager.getCategoryOverrides()
     }
 
     fun launchApp(app: AppModel) {
@@ -552,6 +629,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun iconKey(app: AppModel): String {
         val handleId = app.userHandle?.hashCode() ?: 0
         return "${app.packageName}|${app.activityName}|$handleId"
+    }
+
+    private fun categoryOverrideKey(app: AppModel, isWorkApp: Boolean): String {
+        val scope = if (isWorkApp) "work" else "personal"
+        return "$scope:${app.packageName}"
     }
 
     override fun onCleared() {
