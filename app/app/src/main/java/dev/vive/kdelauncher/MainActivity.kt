@@ -1,5 +1,6 @@
 package dev.vive.kdelauncher
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -51,13 +52,23 @@ class MainActivity : ComponentActivity() {
         launcherViewModel?.refreshStatus()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            launcherViewModel?.resetToHome()
+        }
+    }
+
     /**
      * Override back press to prevent exiting the launcher.
      * As a home screen, pressing back should do nothing.
      */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Do nothing — launcher should not exit on back press
+        val handled = launcherViewModel?.handleBackPress() == true
+        if (!handled) {
+            // Do nothing — launcher should not exit on back press
+        }
     }
 }
 

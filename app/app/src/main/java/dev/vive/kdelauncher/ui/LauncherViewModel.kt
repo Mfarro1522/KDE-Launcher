@@ -72,6 +72,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _isDarkTheme = MutableStateFlow(settingsManager.isDarkTheme())
     private val _showSettings = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(true)
+    private val _homeResetCounter = MutableStateFlow(0)
 
     // ── Favorites & work tags — StateFlows so SharedPrefs is NOT read in combine ──
     // Previously getFavorites()/getWorkApps() were called inside the combine lambda
@@ -207,6 +208,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = LauncherUiState()
     )
+
+    val homeResetCounter: StateFlow<Int> = _homeResetCounter
 
     init {
         try {
@@ -356,6 +359,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _searchQuery.value = ""
         _activeCategory.value = AppCategory.FAVORITES
         _showSettings.value = false
+        _homeResetCounter.value = _homeResetCounter.value + 1
+    }
+
+    fun handleBackPress(): Boolean {
+        return if (_showSettings.value) {
+            _showSettings.value = false
+            true
+        } else {
+            false
+        }
     }
 
     fun toggleProfile() {
