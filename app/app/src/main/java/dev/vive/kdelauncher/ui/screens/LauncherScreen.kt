@@ -7,8 +7,14 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -18,14 +24,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.ui.LauncherViewModel
 import dev.vive.kdelauncher.ui.components.*
 import dev.vive.kdelauncher.ui.theme.LocalColors
+import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
 
 /**
  * Main launcher screen:
- * ProfileHeader (with gear icon) -> Settings panel (collapsible) ->
- * SearchBar -> [CategorySidebar | AppGrid]
+ * [Not-default banner] → ProfileHeader (with gear icon) → Settings panel (collapsible) →
+ * SearchBar → [CategorySidebar | AppGrid]
  */
 @Composable
 fun LauncherScreen(
@@ -34,6 +42,7 @@ fun LauncherScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colors = LocalColors.current
+    val accent = LocalLauncherAccent.current
 
     Column(
         modifier = modifier
@@ -42,12 +51,59 @@ fun LauncherScreen(
     ) {
         Spacer(modifier = Modifier.height(8.dp))
 
+        // ── "Not default launcher" warning banner ──────────────────────────
+        AnimatedVisibility(
+            visible = !uiState.isDefaultLauncher,
+            enter = expandVertically(tween(300)) + fadeIn(tween(300)),
+            exit = shrinkVertically(tween(200)) + fadeOut(tween(200))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFFFF9100).copy(alpha = 0.15f),
+                                Color(0xFFFF9100).copy(alpha = 0.05f)
+                            )
+                        )
+                    )
+                    .clickable { viewModel.openSetDefaultLauncherScreen() }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color(0xFFFF9100)
+                )
+                Text(
+                    text = "No es el launcher predeterminado. Toca aquí para activarlo.",
+                    fontSize = 12.sp,
+                    color = Color(0xFFFF9100),
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Rounded.OpenInNew,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFFFF9100).copy(alpha = 0.7f)
+                )
+            }
+        }
+
         // Profile header with gear icon for settings
         ProfileHeader(
             profile = uiState.currentProfile,
             onToggleProfile = { viewModel.toggleProfile() },
             onToggleSettings = { viewModel.toggleSettings() },
             showSettingsActive = uiState.showSettings,
+            hasRealWorkProfile = uiState.hasRealWorkProfile,
+            isWorkProfileLocked = uiState.isWorkProfileLocked,
             modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
         )
 
