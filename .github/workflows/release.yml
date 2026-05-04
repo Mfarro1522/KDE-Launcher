@@ -5,12 +5,14 @@ on:
     tags:
       - 'v*'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build & Publish APK
     runs-on: ubuntu-latest
 
-    # ── Todo corre desde la subcarpeta donde está gradlew ──
     defaults:
       run:
         working-directory: app
@@ -26,18 +28,24 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: 📱 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: 🔑 Dar permisos a gradlew
         run: chmod +x gradlew
 
-      - name: 🔨 Compilar APK (debug)
-        run: ./gradlew assembleDebug --no-daemon
+      - name: 🗑️ Eliminar local.properties (usa el SDK del runner)
+        run: rm -f local.properties
+
+      - name: 🔨 Compilar APK debug
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: 📦 Renombrar APK con versión
         run: |
           VERSION=${{ github.ref_name }}
-          mkdir -p ../artifacts
+          mkdir -p ../../artifacts
           cp app/build/outputs/apk/debug/app-debug.apk \
-             ../artifacts/VoidLauncher_${VERSION}.apk
+             ../../artifacts/VoidLauncher_${VERSION}.apk
 
       - name: 🚀 Publicar GitHub Release
         uses: softprops/action-gh-release@v2
@@ -50,13 +58,11 @@ jobs:
             ## Vøid Launcher ${{ github.ref_name }}
 
             ### 📲 Instalación
-            1. Descarga el APK desde **Assets** aquí abajo
-            2. En Android: Ajustes → Seguridad → Fuentes desconocidas ✓
-            3. Instala el APK
-            4. Ponlo como launcher predeterminado
+            1. Descarga el **APK** desde Assets aquí abajo
+            2. En Android → Ajustes → Seguridad → Fuentes desconocidas ✓
+            3. Instala y ponlo como launcher predeterminado
 
-            ### ⚠️ Requisitos
+            ### ⚙️ Requisitos
             - Android 11+ (API 31)
-            - Arquitectura x86_64 (emulador) o arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
