@@ -64,6 +64,7 @@ data class LauncherUiState(
     val isDefaultLauncher: Boolean = true,
     val hasRealWorkProfile: Boolean = false,
     val isWorkProfileLocked: Boolean = false,
+    val isNotificationAccessGranted: Boolean = false,
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -157,14 +158,21 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         Triple(configs, visible, overrides)
     }
 
+    // ── Notifications ────────────────────────────────────────────────────────
+    private val _notificationCounts = dev.vive.kdelauncher.service.NotificationTracker.notificationCounts
+    private val _isNotificationAccessGranted = MutableStateFlow(false)
+
     // ── Main UI state ────────────────────────────────────────────────────────
 
     val uiState: StateFlow<LauncherUiState> = combine(
         combine(_allApps, _searchQuery) { apps, q -> apps to q },
         combine(_activeCategory, _iconPackState, _iconSettingsState) { cat, ipState, iconSettings -> Triple(cat, ipState, iconSettings) },
         combine(_secondaryState, _statusState) { sec, stat -> sec to stat },
-        combine(_profileData, _categoryState) { pd, cs -> pd to cs }
-    ) { (allApps, query), (category, ipState, iconSettingsData), (secondary, status), (profileData, catData) ->
+        combine(
+            combine(_profileData, _categoryState) { pd, cs -> pd to cs },
+            combine(_notificationCounts, _isNotificationAccessGranted) { nc, ag -> nc to ag }
+        ) { pdCs, notifData -> pdCs to notifData }
+    ) { (allApps, query), (category, ipState, iconSettingsData), (secondary, status), (pdCs, notifData) ->
 
         val profile = secondary[0] as Profile
         val isDark = secondary[1] as Boolean
@@ -185,8 +193,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val hasWork = status.second
         val workLocked = status.third
 
+        val profileData = pdCs.first
+        val catData = pdCs.second
         val (favorites, workApps) = profileData
         val (categoryConfigs, visibleCategories, categoryOverrides) = catData
+        
+        val notificationMap = notifData.first
+        val isNotifAccessGranted = notifData.second
 
         // Annotate apps with favorite/work tags — no I/O, pure in-memory ops
         val appsWithMeta = allApps.map { app ->
@@ -198,7 +211,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 isFavorite = favorites.contains(app.packageName),
                 profileTag = if (isWorkApp)
                     ProfileType.WORK else ProfileType.PERSONAL,
-                category = overrideCategory ?: app.category
+                category = overrideCategory ?: app.category,
+                notificationCount = notificationMap[app.packageName] ?: 0
             )
         }
 
@@ -248,6 +262,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             isDefaultLauncher = isDefault,
             hasRealWorkProfile = hasWork,
             isWorkProfileLocked = workLocked,
+            isNotificationAccessGranted = isNotifAccessGranted,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -264,6 +279,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             registerPackageReceiver()
             checkLauncherStatus()
             checkWorkProfile()
+            checkNotificationPermission()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -606,10 +622,56 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun openNotificationSettings() {
+        try {
+            val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            getApplication<Application>().startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun checkNotificationPermission() {
+        try {
+            val app = getApplication<Application>()
+            val pkgName = app.packageName
+            val flat = android.provider.Settings.Secure.getString(app.contentResolver, "enabled_notification_listeners")
+            _isNotificationAccessGranted.value = flat != null && flat.contains(pkgName)
+        } catch (e: Exception) {
+            _isNotificationAccessGranted.value = false
+        }
+    }
+
+    fun openAppInfo(app: AppModel) {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${app.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            getApplication<Application>().startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun uninstallApp(app: AppModel) {
+        try {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = android.net.Uri.parse("package:${app.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            getApplication<Application>().startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     /** Refresh work profile and launcher status (called from onResume). */
     fun refreshStatus() {
         checkLauncherStatus()
         checkWorkProfile()
+        checkNotificationPermission()
     }
 
     private fun iconKey(app: AppModel): String {

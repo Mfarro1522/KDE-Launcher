@@ -13,8 +13,12 @@ import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.data.model.ProfileType
@@ -72,6 +77,8 @@ fun AppIcon(
     onToggleFavorite: () -> Unit,
     onAssignCategory: (AppCategory) -> Unit,
     onClearCategory: () -> Unit,
+    onAppInfo: () -> Unit,
+    onUninstall: () -> Unit,
     activeCategory: AppCategory,
     categoryConfigs: List<CategoryConfig>,
     visibleCategories: List<AppCategory>,
@@ -179,6 +186,30 @@ fun AppIcon(
                         else colors.onBackground.copy(alpha = 0.7f)
                     )
                 }
+
+                // Notification Badge
+                if (app.notificationCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 6.dp, y = (-6).dp)
+                            .sizeIn(minWidth = 18.dp, minHeight = 18.dp)
+                            .background(androidx.compose.ui.graphics.Color(0xFFE53935), androidx.compose.foundation.shape.CircleShape)
+                            .border(1.5.dp, colors.background, androidx.compose.foundation.shape.CircleShape)
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (app.notificationCount > 99) "99+" else app.notificationCount.toString(),
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = LauncherTypography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            ),
+                            maxLines = 1
+                        )
+                    }
+                }
             }
 
             // ── Label ──────────────────────────────────────────────────────
@@ -205,74 +236,114 @@ fun AppIcon(
                 onDismissRequest = { menuExpanded = false },
                 offset = DpOffset(6.dp, 6.dp),
                 modifier = Modifier
-                    .widthIn(min = 140.dp)
+                    .widthIn(min = 180.dp)
                     .clip(menuShape)
                     .background(colors.surface)
                     .border(1.dp, colors.border.copy(alpha = 0.8f), menuShape)
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    Box(
+                    // ── Launcher Quick Actions ───────────────────────────────
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(menuItemBg)
-                            .clickable {
-                                menuExpanded = false
-                                onToggleFavorite()
-                            },
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
                     ) {
-                        Icon(
-                            imageVector = favoriteIcon,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = if (app.isFavorite) accent.primary else colors.onSurfaceVariant
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(menuItemBg)
-                            .clickable {
-                                menuExpanded = false
-                                showCategoryPicker = true
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = colors.onSurfaceVariant
-                        )
-                    }
-
-                    if (showRemoveAction) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .weight(1f)
+                                .height(38.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(menuItemBg)
                                 .clickable {
                                     menuExpanded = false
-                                    removeAction()
+                                    onToggleFavorite()
                                 },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
+                                imageVector = favoriteIcon,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(20.dp),
+                                tint = if (app.isFavorite) accent.primary else colors.onSurfaceVariant
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(menuItemBg)
+                                .clickable {
+                                    menuExpanded = false
+                                    showCategoryPicker = true
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
                                 tint = colors.onSurfaceVariant
                             )
                         }
+
+                        if (showRemoveAction) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(menuItemBg)
+                                    .clickable {
+                                        menuExpanded = false
+                                        removeAction()
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = colors.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
+
+                    HorizontalDivider(
+                        color = colors.border.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    // ── OS Actions ───────────────────────────────────────────
+                    DropdownMenuItem(
+                        text = { Text("Información", style = LauncherTypography.bodyMedium) },
+                        onClick = {
+                            menuExpanded = false
+                            onAppInfo()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(20.dp))
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Desinstalar", style = LauncherTypography.bodyMedium) },
+                        onClick = {
+                            menuExpanded = false
+                            onUninstall()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    )
                 }
             }
         }

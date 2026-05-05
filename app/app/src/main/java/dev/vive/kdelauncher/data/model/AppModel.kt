@@ -15,7 +15,8 @@ data class AppModel(
     val category: AppCategory = AppCategory.ALL,
     val isFavorite: Boolean = false,
     val profileTag: ProfileType = ProfileType.PERSONAL,
-    val userHandle: UserHandle? = null
+    val userHandle: UserHandle? = null,
+    val notificationCount: Int = 0
 )
 
 /**

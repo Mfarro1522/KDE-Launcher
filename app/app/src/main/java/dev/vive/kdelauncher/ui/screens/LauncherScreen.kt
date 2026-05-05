@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
@@ -105,6 +106,51 @@ fun LauncherScreen(
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
                     tint = Color(0xFFFF9100).copy(alpha = 0.7f)
+                )
+            }
+        }
+
+        // ── Notification Access warning banner ──────────────────────────
+        AnimatedVisibility(
+            visible = !uiState.isNotificationAccessGranted,
+            enter = expandVertically(tween(300)) + fadeIn(tween(300)),
+            exit = shrinkVertically(tween(200)) + fadeOut(tween(200))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFFE53935).copy(alpha = 0.15f),
+                                Color(0xFFE53935).copy(alpha = 0.05f)
+                            )
+                        )
+                    )
+                    .clickable { viewModel.openNotificationSettings() }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Notifications,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color(0xFFE53935)
+                )
+                Text(
+                    text = "Permiso de notificaciones necesario para los contadores.",
+                    fontSize = 12.sp,
+                    color = Color(0xFFE53935),
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Rounded.OpenInNew,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFFE53935).copy(alpha = 0.7f)
                 )
             }
         }
@@ -205,6 +251,8 @@ fun LauncherScreen(
                 onToggleFavorite = { viewModel.toggleFavorite(it) },
                 onAssignCategory = { app, category -> viewModel.setCategoryOverride(app, category) },
                 onClearCategory = { viewModel.clearCategoryOverride(it) },
+                onAppInfo = { viewModel.openAppInfo(it) },
+                onUninstall = { viewModel.uninstallApp(it) },
                 modifier = Modifier.weight(1f)
             )
         }
