@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "KDE-Launcher"
+rootProject.name = "TAPO-Launcher"
 include(":app")

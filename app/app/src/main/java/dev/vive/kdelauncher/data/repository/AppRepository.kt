@@ -9,9 +9,11 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.util.LruCache
 import androidx.core.graphics.drawable.toBitmap
-import dev.vive.kdelauncher.data.IconPackManager
+import dev.vive.kdelauncher.data.IconPackManager as IconPackManagerImpl
 import dev.vive.kdelauncher.data.model.AppCategorizer
 import dev.vive.kdelauncher.data.model.AppModel
+import dev.vive.kdelauncher.domain.repository.AppRepository
+import dev.vive.kdelauncher.domain.repository.IconPackManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -38,9 +40,9 @@ import kotlinx.coroutines.withContext
  *    from upscaling. The memory cache uses 1/4 of available heap (capped at 32 MB)
  *    to comfortably hold 500+ 128×128 ARGB_8888 icons (~500 MB → ~31 MB).
  */
-class AppRepository(private val context: Context) {
+class AppRepositoryImpl(private val context: Context) : AppRepository {
 
-    private val iconPackManager = IconPackManager(context)
+    private val iconPackManager: IconPackManager = IconPackManagerImpl(context)
 
     companion object {
         /**
@@ -71,8 +73,8 @@ class AppRepository(private val context: Context) {
      *
      * Optionally overlays icons from [selectedIconPack] (package name, or null for system).
      */
-    suspend fun getInstalledApps(
-        selectedIconPack: String? = null
+    override suspend fun getInstalledApps(
+        selectedIconPack: String?
     ): List<AppModel> = withContext(Dispatchers.IO) {
         try {
             val resolveInfos = queryLaunchableApps()
@@ -117,7 +119,7 @@ class AppRepository(private val context: Context) {
      * Fetch app list **without icons** (metadata only) — nearly instant.
      * Use this to populate the UI immediately while icons load in the background.
      */
-    suspend fun getInstalledAppsMetadata(): List<AppModel> = withContext(Dispatchers.IO) {
+    override suspend fun getInstalledAppsMetadata(): List<AppModel> = withContext(Dispatchers.IO) {
         try {
             val resolveInfos = queryLaunchableApps()
             val pm = context.packageManager
@@ -149,10 +151,10 @@ class AppRepository(private val context: Context) {
         }
     }
 
-    fun getLaunchIntent(packageName: String): Intent? =
+    override fun getLaunchIntent(packageName: String): Intent? =
         context.packageManager.getLaunchIntentForPackage(packageName)
 
-    suspend fun getAppIcon(
+    override suspend fun getAppIcon(
         packageName: String,
         activityName: String,
         selectedIconPack: String?
@@ -187,7 +189,7 @@ class AppRepository(private val context: Context) {
      * Clear the icon bitmap cache.
      * Call when the user switches icon packs so stale icons are evicted.
      */
-    fun clearIconPackCache() {
+    override fun clearIconPackCache() {
         iconCache.evictAll()
         iconPackManager.clearCache()
     }

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
 import androidx.core.graphics.drawable.toBitmap
+import dev.vive.kdelauncher.domain.repository.WorkProfileManager
 
 /**
  * Detects and manages Android's real Work Profile (managed profile via MDM/Enterprise).
@@ -19,7 +20,7 @@ import androidx.core.graphics.drawable.toBitmap
  * 2. Queries apps from the work profile using the LauncherApps API.
  * 3. Falls back gracefully if no work profile exists (device is personal-only).
  */
-class WorkProfileManager(private val context: Context) {
+class WorkProfileManager(private val context: Context) : WorkProfileManager {
 
     private val userManager = context.getSystemService(Context.USER_SERVICE) as UserManager
 
@@ -27,7 +28,7 @@ class WorkProfileManager(private val context: Context) {
      * Returns true if the device has a real Android Work Profile (managed profile).
      * This requires Android 5.0+ and an MDM/EMM setup or Google Workspace account.
      */
-    fun hasRealWorkProfile(): Boolean {
+    override fun hasRealWorkProfile(): Boolean {
         return try {
             getWorkProfileHandle() != null
         } catch (e: Exception) {
@@ -38,7 +39,7 @@ class WorkProfileManager(private val context: Context) {
     /**
      * Returns the UserHandle for the managed work profile, or null if none exists.
      */
-    fun getWorkProfileHandle(): UserHandle? {
+    override fun getWorkProfileHandle(): UserHandle? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val myHandle = android.os.Process.myUserHandle()
@@ -61,7 +62,7 @@ class WorkProfileManager(private val context: Context) {
      *
      * Returns empty list if no work profile exists or permission is denied.
      */
-    fun getWorkProfileApps(loadIcons: Boolean = true): List<WorkProfileApp> {
+    override fun getWorkProfileApps(loadIcons: Boolean): List<WorkProfileApp> {
         if (!hasRealWorkProfile()) return emptyList()
 
         return try {
@@ -105,7 +106,7 @@ class WorkProfileManager(private val context: Context) {
      * Launch an app from the work profile using LauncherApps + its UserHandle.
      * Regular startActivity() won't work for cross-profile launches.
      */
-    fun launchWorkApp(
+    override fun launchWorkApp(
         packageName: String,
         activityName: String,
         userHandle: UserHandle
@@ -124,7 +125,7 @@ class WorkProfileManager(private val context: Context) {
         }
     }
 
-    fun loadWorkAppIcon(
+    override fun loadWorkAppIcon(
         packageName: String,
         activityName: String,
         userHandle: UserHandle
@@ -151,7 +152,7 @@ class WorkProfileManager(private val context: Context) {
      * Uses UserManager.isQuietModeEnabled() — available since API 24 (our minSdk is 26).
      * Quiet mode == the work profile is paused/suspended by the user or MDM.
      */
-    fun isWorkProfileLocked(): Boolean {
+    override fun isWorkProfileLocked(): Boolean {
         return try {
             val workHandle = getWorkProfileHandle() ?: return false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

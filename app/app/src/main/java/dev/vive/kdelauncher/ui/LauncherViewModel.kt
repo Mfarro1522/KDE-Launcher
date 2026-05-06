@@ -1,40 +1,41 @@
 package dev.vive.kdelauncher.ui
 
 import android.app.Application
-import android.app.role.RoleManager
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.Build
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dev.vive.kdelauncher.AppContainer
 import dev.vive.kdelauncher.SetDefaultLauncherActivity
-import dev.vive.kdelauncher.data.IconPackInfo
-import dev.vive.kdelauncher.data.IconPackManager
-import dev.vive.kdelauncher.data.ProfileManager
-import dev.vive.kdelauncher.data.SettingsManager
-import dev.vive.kdelauncher.data.WorkProfileManager
-import dev.vive.kdelauncher.data.model.AppCategorizer
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.data.model.Profile
 import dev.vive.kdelauncher.data.model.ProfileType
-import dev.vive.kdelauncher.data.repository.AppRepository
+import dev.vive.kdelauncher.domain.repository.AppRepository
+import dev.vive.kdelauncher.domain.repository.IconPackManager
+import dev.vive.kdelauncher.domain.repository.NotificationTracker
+import dev.vive.kdelauncher.domain.repository.ProfileManager
+import dev.vive.kdelauncher.domain.repository.SettingsManager
+import dev.vive.kdelauncher.domain.repository.WorkProfileManager
+import dev.vive.kdelauncher.domain.usecase.GetSystemStatusUseCase
+import dev.vive.kdelauncher.domain.usecase.LaunchAppUseCase
+import dev.vive.kdelauncher.domain.usecase.LoadAppsUseCase
+import dev.vive.kdelauncher.domain.usecase.LoadIconPacksUseCase
+import dev.vive.kdelauncher.domain.usecase.SetCategoryOverrideUseCase
+import dev.vive.kdelauncher.domain.usecase.ToggleFavoriteUseCase
+import dev.vive.kdelauncher.domain.usecase.ToggleWorkAppUseCase
+import dev.vive.kdelauncher.service.PackageChangeReceiver
 import dev.vive.kdelauncher.ui.components.CategoryConfig
 import dev.vive.kdelauncher.ui.components.IconSize
 import dev.vive.kdelauncher.ui.components.parseIconSize
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Complete UI state for the launcher screen.
@@ -52,184 +53,233 @@ data class LauncherUiState(
     val appCounts: Map<AppCategory, Int> = emptyMap(),
     val categoryConfigs: List<CategoryConfig> = emptyList(),
     val visibleCategories: List<AppCategory> = AppCategory.entries,
-    // Icon settings
     val iconSize: IconSize = IconSize.MEDIUM,
     val showIconBackground: Boolean = true,
     val gridColumns: Int = 3,
-    // Icon packs
-    val installedIconPacks: List<IconPackInfo> = emptyList(),
+    val installedIconPacks: List<dev.vive.kdelauncher.data.IconPackInfo> = emptyList(),
     val selectedIconPack: String? = null,
     val isLoadingIconPacks: Boolean = false,
-    // Launcher & Work Profile status
     val isDefaultLauncher: Boolean = true,
     val hasRealWorkProfile: Boolean = false,
     val isWorkProfileLocked: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
 )
 
-class LauncherViewModel(application: Application) : AndroidViewModel(application) {
+class LauncherViewModel(
+    application: Application,
+    private val appRepository: AppRepository,
+    private val profileManager: ProfileManager,
+    private val settingsManager: SettingsManager,
+    private val iconPackManager: IconPackManager,
+    private val workProfileManager: WorkProfileManager,
+    private val notificationTracker: NotificationTracker,
+    private val loadAppsUseCase: LoadAppsUseCase,
+    private val launchAppUseCase: LaunchAppUseCase,
+    private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
+    private val toggleWorkAppUseCase: ToggleWorkAppUseCase,
+    private val loadIconPacksUseCase: LoadIconPacksUseCase,
+    private val getSystemStatusUseCase: GetSystemStatusUseCase,
+    private val setCategoryOverrideUseCase: SetCategoryOverrideUseCase,
+) : AndroidViewModel(application) {
 
-    private val appRepository = AppRepository(application)
-    private val profileManager = ProfileManager(application)
-    private val settingsManager = SettingsManager(application)
-    private val iconPackManager = IconPackManager(application)
-    private val workProfileManager = WorkProfileManager(application)
-
-    // ── Core app list ────────────────────────────────────────────────────────
+    // ── UI-controlled state ──────────────────────────────────────────────────
     private val _allApps = MutableStateFlow<List<AppModel>>(emptyList())
     private val _searchQuery = MutableStateFlow("")
     private val _activeCategory = MutableStateFlow(AppCategory.FAVORITES)
-
-    // ── Profile & theme ──────────────────────────────────────────────────────
-    private val _currentProfile = MutableStateFlow(profileManager.getActiveProfile())
-    private val _isDarkTheme = MutableStateFlow(settingsManager.isDarkTheme())
-    private val _showAppLabels = MutableStateFlow(settingsManager.isShowAppLabels())
     private val _showSettings = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(true)
-    private val _homeResetCounter = MutableStateFlow(0)
-
-    // ── Favorites & work tags — StateFlows so SharedPrefs is NOT read in combine ──
-    private val _favorites = MutableStateFlow<Set<String>>(profileManager.getFavorites())
-    private val _workApps = MutableStateFlow<Set<String>>(profileManager.getWorkApps())
-
-    // ── Category settings — same: only updated when settings actually change ─
-    private val _categoryConfigs = MutableStateFlow(buildCategoryConfigs())
-    private val _visibleCategories = MutableStateFlow(buildVisibleCategories())
-    private val _categoryOverrides =
-        MutableStateFlow(settingsManager.getCategoryOverrides())
-
-    // ── Icon packs ───────────────────────────────────────────────────────────
-    private val _installedIconPacks = MutableStateFlow<List<IconPackInfo>>(emptyList())
-    private val _selectedIconPack = MutableStateFlow(settingsManager.getSelectedIconPack())
     private val _isLoadingIconPacks = MutableStateFlow(false)
-
-    // ── Icon settings ────────────────────────────────────────────────────────
-    private val _iconSize = MutableStateFlow(parseIconSize(settingsManager.getIconSize()))
-    private val _showIconBackground = MutableStateFlow(settingsManager.isShowIconBackground())
-    private val _gridColumns = MutableStateFlow(settingsManager.getGridColumns())
+    private val _installedIconPacks = MutableStateFlow<List<dev.vive.kdelauncher.data.IconPackInfo>>(emptyList())
+    private val _homeResetCounter = MutableStateFlow(0)
 
     // ── System status ────────────────────────────────────────────────────────
     private val _isDefaultLauncher = MutableStateFlow(true)
     private val _hasRealWorkProfile = MutableStateFlow(false)
     private val _isWorkProfileLocked = MutableStateFlow(false)
+    private val _isNotificationAccessGranted = MutableStateFlow(false)
 
     // ── Package change receiver ──────────────────────────────────────────────
-    private val packageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) { loadApps() }
+    private val packageChangeReceiver = PackageChangeReceiver(
+        onPackageChanged = { refreshApps() }
+    )
+
+    // ── Derived flows from reactive repositories ─────────────────────────────
+    private val categoryConfigsFlow = combine(
+        settingsManager.hiddenCategories,
+        settingsManager.categoryDisplayNames,
+        settingsManager.categoryIconNames
+    ) { hidden, displayNames, iconNames ->
+        AppCategory.entries.map { cat ->
+            CategoryConfig(
+                category = cat,
+                displayName = displayNames[cat] ?: cat.displayName,
+                iconName = iconNames[cat] ?: "Star",
+                isHidden = cat.name in hidden
+            )
+        }
     }
 
-    // ── Sub-combines to stay within 5-arg limit ──────────────────────────────
-
-    /** Profile + theme + UI toggles + loading state */
-    private val _secondaryState = combine(
-        _currentProfile, _isDarkTheme, _showAppLabels, _showSettings, _isLoading
-    ) { profile, dark, showLabels, settings, loading ->
-        listOf<Any>(profile, dark, showLabels, settings, loading)
+    private val visibleCategoriesFlow = settingsManager.hiddenCategories.map { hidden ->
+        AppCategory.entries.filter { it.name !in hidden }
     }
 
-    /** Icon pack state */
-    private val _iconPackState = combine(
-        _installedIconPacks, _selectedIconPack, _isLoadingIconPacks
-    ) { packs, selected, loading ->
-        Triple(packs, selected, loading)
+    // ── Sub-combines (grouped by domain) ─────────────────────────────────────
+
+    private data class AppInput(
+        val allApps: List<AppModel>,
+        val searchQuery: String,
+        val activeCategory: AppCategory
+    )
+
+    private val appInput = combine(_allApps, _searchQuery, _activeCategory) { apps, q, cat ->
+        AppInput(apps, q, cat)
     }
 
-    /** Icon settings (size, background, columns) */
-    private val _iconSettingsState = combine(
-        _iconSize, _showIconBackground, _gridColumns
-    ) { size, showBg, cols ->
-        Triple(size, showBg, cols)
+    private data class SettingsInputPart1(
+        val darkTheme: Boolean,
+        val showAppLabels: Boolean,
+        val showSettings: Boolean,
+        val isLoading: Boolean,
+        val iconSize: IconSize
+    )
+
+    private val settingsInputPart1 = combine(
+        settingsManager.darkTheme,
+        settingsManager.showAppLabels,
+        _showSettings,
+        _isLoading,
+        settingsManager.iconSize.map { parseIconSize(it) }
+    ) { dark, labels, showSettings, loading, size ->
+        SettingsInputPart1(dark, labels, showSettings, loading, size)
     }
 
-    /** Device/launcher status */
-    private val _statusState = combine(
-        _isDefaultLauncher, _hasRealWorkProfile, _isWorkProfileLocked
-    ) { isDefault, hasWork, workLocked ->
-        Triple(isDefault, hasWork, workLocked)
+    private data class SettingsInputPart2(
+        val showIconBackground: Boolean,
+        val gridColumns: Int,
+        val selectedIconPack: String?,
+        val isLoadingIconPacks: Boolean,
+        val installedIconPacks: List<dev.vive.kdelauncher.data.IconPackInfo>
+    )
+
+    private val settingsInputPart2 = combine(
+        settingsManager.showIconBackground,
+        settingsManager.gridColumns,
+        settingsManager.selectedIconPack,
+        _isLoadingIconPacks,
+        _installedIconPacks
+    ) { bg, cols, pack, loadingPacks, packs ->
+        SettingsInputPart2(bg, cols, pack, loadingPacks, packs)
     }
 
-    /** Favorites + work tags (avoids SharedPrefs reads inside the main combine) */
-    private val _profileData = combine(_favorites, _workApps) { fav, work -> fav to work }
+    private data class ProfileInput(
+        val currentProfile: Profile,
+        val favorites: Set<String>,
+        val workApps: Set<String>
+    )
 
-    /** Category config + visibility + per-app overrides */
-    private val _categoryState = combine(
-        _categoryConfigs, _visibleCategories, _categoryOverrides
+    private val profileInput = combine(
+        profileManager.activeProfile,
+        profileManager.favorites,
+        profileManager.workApps
+    ) { profile, fav, work ->
+        ProfileInput(profile, fav, work)
+    }
+
+    private data class CategoryInput(
+        val categoryConfigs: List<CategoryConfig>,
+        val visibleCategories: List<AppCategory>,
+        val categoryOverrides: Map<String, AppCategory>
+    )
+
+    private val categoryInput = combine(
+        categoryConfigsFlow,
+        visibleCategoriesFlow,
+        settingsManager.categoryOverrides
     ) { configs, visible, overrides ->
-        Triple(configs, visible, overrides)
+        CategoryInput(configs, visible, overrides)
     }
 
-    // ── Notifications ────────────────────────────────────────────────────────
-    private val _notificationCounts = dev.vive.kdelauncher.service.NotificationTracker.notificationCounts
-    private val _isNotificationAccessGranted = MutableStateFlow(false)
+    private data class SystemInput(
+        val isDefaultLauncher: Boolean,
+        val hasRealWorkProfile: Boolean,
+        val isWorkProfileLocked: Boolean,
+        val isNotificationAccessGranted: Boolean
+    )
+
+    private val systemInput = combine(
+        _isDefaultLauncher,
+        _hasRealWorkProfile,
+        _isWorkProfileLocked,
+        _isNotificationAccessGranted
+    ) { def, work, locked, notif ->
+        SystemInput(def, work, locked, notif)
+    }
 
     // ── Main UI state ────────────────────────────────────────────────────────
 
-    val uiState: StateFlow<LauncherUiState> = combine(
-        combine(_allApps, _searchQuery) { apps, q -> apps to q },
-        combine(_activeCategory, _iconPackState, _iconSettingsState) { cat, ipState, iconSettings -> Triple(cat, ipState, iconSettings) },
-        combine(_secondaryState, _statusState) { sec, stat -> sec to stat },
-        combine(
-            combine(_profileData, _categoryState) { pd, cs -> pd to cs },
-            combine(_notificationCounts, _isNotificationAccessGranted) { nc, ag -> nc to ag }
-        ) { pdCs, notifData -> pdCs to notifData }
-    ) { (allApps, query), (category, ipState, iconSettingsData), (secondary, status), (pdCs, notifData) ->
+    private data class UiInput(
+        val app: AppInput,
+        val settings1: SettingsInputPart1,
+        val settings2: SettingsInputPart2,
+        val profile: ProfileInput,
+        val category: CategoryInput,
+        val system: SystemInput,
+        val notificationMap: Map<String, Int>
+    )
 
-        val profile = secondary[0] as Profile
-        val isDark = secondary[1] as Boolean
-        val showLabels = secondary[2] as Boolean
-        val showSettings = secondary[3] as Boolean
-        val loading = secondary[4] as Boolean
+    private val uiInput = combine(
+        combine(appInput, settingsInputPart1, settingsInputPart2) { app, s1, s2 ->
+            Triple(app, s1, s2)
+        },
+        combine(profileInput, categoryInput, systemInput) { profile, cat, sys ->
+            Triple(profile, cat, sys)
+        },
+        notificationTracker.notificationCounts
+    ) { appSettings, profileCatSys, notificationMap ->
+        UiInput(
+            app = appSettings.first,
+            settings1 = appSettings.second,
+            settings2 = appSettings.third,
+            profile = profileCatSys.first,
+            category = profileCatSys.second,
+            system = profileCatSys.third,
+            notificationMap = notificationMap
+        )
+    }
 
-        @Suppress("UNCHECKED_CAST")
-        val installedPacks = ipState.first as List<IconPackInfo>
-        val selectedPack = ipState.second as String?
-        val loadingPacks = ipState.third as Boolean
+    val uiState: StateFlow<LauncherUiState> = uiInput.map { input ->
+        val hasWork = input.system.hasRealWorkProfile
+        val favorites = input.profile.favorites
+        val workApps = input.profile.workApps
+        val categoryOverrides = input.category.categoryOverrides
 
-        val iconSize = iconSettingsData.first as IconSize
-        val showIconBackground = iconSettingsData.second as Boolean
-        val gridColumns = iconSettingsData.third as Int
-
-        val isDefault = status.first
-        val hasWork = status.second
-        val workLocked = status.third
-
-        val profileData = pdCs.first
-        val catData = pdCs.second
-        val (favorites, workApps) = profileData
-        val (categoryConfigs, visibleCategories, categoryOverrides) = catData
-        
-        val notificationMap = notifData.first
-        val isNotifAccessGranted = notifData.second
-
-        // Annotate apps with favorite/work tags — no I/O, pure in-memory ops
-        val appsWithMeta = allApps.map { app ->
-            val isWorkApp = if (hasWork) app.userHandle != null
-            else workApps.contains(app.packageName)
-            val overrideKey = categoryOverrideKey(app, isWorkApp)
+        val appsWithMeta = input.app.allApps.map { appModel ->
+            val isWorkApp = if (hasWork) appModel.userHandle != null
+            else workApps.contains(appModel.packageName)
+            val overrideKey = categoryOverrideKey(appModel, isWorkApp)
             val overrideCategory = categoryOverrides[overrideKey]
-            app.copy(
-                isFavorite = favorites.contains(app.packageName),
-                profileTag = if (isWorkApp)
-                    ProfileType.WORK else ProfileType.PERSONAL,
-                category = overrideCategory ?: app.category,
-                notificationCount = notificationMap[app.packageName] ?: 0
+            appModel.copy(
+                isFavorite = favorites.contains(appModel.packageName),
+                profileTag = if (isWorkApp) ProfileType.WORK else ProfileType.PERSONAL,
+                category = overrideCategory ?: appModel.category,
+                notificationCount = input.notificationMap[appModel.packageName] ?: 0
             )
         }
 
-        val profileFiltered = when (profile.type) {
+        val profileFiltered = when (input.profile.currentProfile.type) {
             ProfileType.WORK -> appsWithMeta.filter { it.profileTag == ProfileType.WORK }
             ProfileType.PERSONAL -> appsWithMeta.filter { it.profileTag == ProfileType.PERSONAL }
         }
 
-        val filtered = if (query.isNotBlank()) {
+        val filtered = if (input.app.searchQuery.isNotBlank()) {
             appsWithMeta.filter {
-                it.label.contains(query, ignoreCase = true) ||
-                    it.packageName.contains(query, ignoreCase = true)
+                it.label.contains(input.app.searchQuery, ignoreCase = true) ||
+                    it.packageName.contains(input.app.searchQuery, ignoreCase = true)
             }
-        } else when (category) {
+        } else when (input.app.activeCategory) {
             AppCategory.FAVORITES -> profileFiltered.filter { it.isFavorite }
             AppCategory.ALL -> profileFiltered
-            else -> profileFiltered.filter { it.category == category }
+            else -> profileFiltered.filter { it.category == input.app.activeCategory }
         }
 
         val counts = AppCategory.entries.associateWith { cat ->
@@ -243,26 +293,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         LauncherUiState(
             allApps = appsWithMeta,
             filteredApps = filtered,
-            searchQuery = query,
-            activeCategory = category,
-            currentProfile = profile,
-            isDarkTheme = isDark,
-            showAppLabels = showLabels,
-            showSettings = showSettings,
-            isLoading = loading,
+            searchQuery = input.app.searchQuery,
+            activeCategory = input.app.activeCategory,
+            currentProfile = input.profile.currentProfile,
+            isDarkTheme = input.settings1.darkTheme,
+            showAppLabels = input.settings1.showAppLabels,
+            showSettings = input.settings1.showSettings,
+            isLoading = input.settings1.isLoading,
             appCounts = counts,
-            categoryConfigs = categoryConfigs,
-            visibleCategories = visibleCategories,
-            iconSize = iconSize,
-            showIconBackground = showIconBackground,
-            gridColumns = gridColumns,
-            installedIconPacks = installedPacks,
-            selectedIconPack = selectedPack,
-            isLoadingIconPacks = loadingPacks,
-            isDefaultLauncher = isDefault,
-            hasRealWorkProfile = hasWork,
-            isWorkProfileLocked = workLocked,
-            isNotificationAccessGranted = isNotifAccessGranted,
+            categoryConfigs = input.category.categoryConfigs,
+            visibleCategories = input.category.visibleCategories,
+            iconSize = input.settings1.iconSize,
+            showIconBackground = input.settings2.showIconBackground,
+            gridColumns = input.settings2.gridColumns,
+            installedIconPacks = input.settings2.installedIconPacks,
+            selectedIconPack = input.settings2.selectedIconPack,
+            isLoadingIconPacks = input.settings2.isLoadingIconPacks,
+            isDefaultLauncher = input.system.isDefaultLauncher,
+            hasRealWorkProfile = input.system.hasRealWorkProfile,
+            isWorkProfileLocked = input.system.isWorkProfileLocked,
+            isNotificationAccessGranted = input.system.isNotificationAccessGranted,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -274,116 +324,40 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         try {
-            loadApps()
-            loadIconPacks()
-            registerPackageReceiver()
-            checkLauncherStatus()
-            checkWorkProfile()
-            checkNotificationPermission()
+            refreshApps()
+            refreshIconPacks()
+            packageChangeReceiver.register(getApplication())
+            refreshSystemStatus()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    // ── Private loaders ──────────────────────────────────────────────────────
+    // ── Refresh methods ──────────────────────────────────────────────────────
 
-    /**
-     * Two-phase loading:
-     * 1. Show metadata-only apps → UI is instantly usable with names/categories
-     * 2. Batch-load all icons in parallel → single state update when done
-     *
-     * This avoids the previous approach of 150+ separate LaunchedEffect calls,
-     * each triggering a full state recomputation for a single icon.
-     */
-    private fun loadApps() {
+    fun refreshApps() {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-
-                // Phase 1: metadata only — near instant
-                val personalMeta = appRepository.getInstalledAppsMetadata()
-                val workMeta = withContext(Dispatchers.IO) {
-                    if (!workProfileManager.hasRealWorkProfile()) emptyList()
-                    else workProfileManager.getWorkProfileApps(loadIcons = false).map { app ->
-                        AppModel(
-                            packageName = app.packageName,
-                            activityName = app.activityName,
-                            label = app.label,
-                            iconBitmap = null,
-                            category = AppCategorizer.categorize(app.packageName, app.androidCategory),
-                            userHandle = app.userHandle
-                        )
-                    }
-                }
-                val metadataApps = mergeApps(personalMeta, workMeta)
-
-                // Show apps immediately (no icons yet but names visible)
+                val selectedPack = settingsManager.selectedIconPack.first()
+                val (metadataApps, fullApps) = loadAppsUseCase(selectedPack)
                 _allApps.value = metadataApps
-                _isLoading.value = false   // UI usable NOW
-
-                // Phase 2: batch-load ALL icons in parallel → single emission
-                val selectedPack = _selectedIconPack.value
-                val iconsByKey = withContext(Dispatchers.IO) {
-                    val personalDeferreds = personalMeta.map { app ->
-                        async {
-                            val key = iconKey(app)
-                            val bitmap = appRepository.getAppIcon(
-                                packageName = app.packageName,
-                                activityName = app.activityName,
-                                selectedIconPack = selectedPack
-                            )
-                            key to bitmap
-                        }
-                    }
-                    // Load work profile icons too if they exist
-                    val workDeferreds = if (workMeta.isNotEmpty()) {
-                        workMeta.map { app ->
-                            async {
-                                val key = iconKey(app)
-                                val bitmap = if (app.userHandle != null) {
-                                    workProfileManager.loadWorkAppIcon(
-                                        packageName = app.packageName,
-                                        activityName = app.activityName,
-                                        userHandle = app.userHandle
-                                    )
-                                } else null
-                                key to bitmap
-                            }
-                        }
-                    } else emptyList()
-
-                    (personalDeferreds + workDeferreds).awaitAll().toMap()
-                }
-
-                // Single emission with all icons populated
-                _allApps.value = metadataApps.map { app ->
-                    val key = iconKey(app)
-                    val bitmap = iconsByKey[key]
-                    if (bitmap != null) app.copy(iconBitmap = bitmap) else app
-                }
-
+                _isLoading.value = false
+                _allApps.value = fullApps
             } catch (e: Exception) {
                 e.printStackTrace()
                 _allApps.value = emptyList()
             } finally {
-                // Ensure loading is false even if something failed mid-way
                 _isLoading.value = false
             }
         }
     }
 
-    private fun mergeApps(
-        personalApps: List<AppModel>,
-        workApps: List<AppModel>
-    ): List<AppModel> {
-        return (personalApps + workApps).sortedBy { it.label.lowercase() }
-    }
-
-    private fun loadIconPacks() {
+    fun refreshIconPacks() {
         viewModelScope.launch {
             try {
                 _isLoadingIconPacks.value = true
-                _installedIconPacks.value = iconPackManager.getInstalledPacks()
+                _installedIconPacks.value = loadIconPacksUseCase()
             } catch (e: Exception) {
                 e.printStackTrace()
                 _installedIconPacks.value = emptyList()
@@ -393,80 +367,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun registerPackageReceiver() {
-        try {
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_PACKAGE_ADDED)
-                addAction(Intent.ACTION_PACKAGE_REMOVED)
-                addAction(Intent.ACTION_PACKAGE_CHANGED)
-                addDataScheme("package")
-            }
-            ContextCompat.registerReceiver(
-                getApplication<Application>(),
-                packageReceiver,
-                filter,
-                ContextCompat.RECEIVER_EXPORTED
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /** Check if we are the current default home/launcher app. */
-    private fun checkLauncherStatus() {
-        viewModelScope.launch {
-            try {
-                val app = getApplication<Application>()
-                val isDefault = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val roleManager = app.getSystemService(Context.ROLE_SERVICE) as RoleManager
-                    roleManager.isRoleHeld(RoleManager.ROLE_HOME)
-                } else {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                        addCategory(android.content.Intent.CATEGORY_HOME)
-                    }
-                    val resolveInfo = app.packageManager.resolveActivity(
-                        intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
-                    )
-                    resolveInfo?.activityInfo?.packageName == app.packageName
-                }
-                _isDefaultLauncher.value = isDefault
-            } catch (e: Exception) {
-                _isDefaultLauncher.value = true
-            }
-        }
-    }
-
-    /** Detect real Android Work Profile via UserManager. */
-    private fun checkWorkProfile() {
-        viewModelScope.launch {
-            try {
-                _hasRealWorkProfile.value = workProfileManager.hasRealWorkProfile()
-                if (_hasRealWorkProfile.value) {
-                    _isWorkProfileLocked.value = workProfileManager.isWorkProfileLocked()
-                }
-            } catch (e: Exception) {
-                _hasRealWorkProfile.value = false
-            }
-        }
-    }
-
-    /**
-     * Builds CategoryConfig list from SettingsManager.
-     * Called once at init and again when settings change — NOT on every state emission.
-     */
-    private fun buildCategoryConfigs(): List<CategoryConfig> =
-        AppCategory.entries.map { cat ->
-            CategoryConfig(
-                category = cat,
-                displayName = settingsManager.getCategoryDisplayName(cat),
-                iconName = settingsManager.getCategoryIconName(cat),
-                isHidden = settingsManager.getHiddenCategories().contains(cat.name),
-            )
-        }
-
-    private fun buildVisibleCategories(): List<AppCategory> {
-        val hiddenSet = settingsManager.getHiddenCategories()
-        return AppCategory.entries.filter { it.name !in hiddenSet }
+    fun refreshSystemStatus() {
+        val status = getSystemStatusUseCase()
+        _isDefaultLauncher.value = status.isDefaultLauncher
+        _hasRealWorkProfile.value = status.hasRealWorkProfile
+        _isWorkProfileLocked.value = status.isWorkProfileLocked
+        _isNotificationAccessGranted.value = status.isNotificationAccessGranted
     }
 
     // ── User actions ─────────────────────────────────────────────────────────
@@ -478,10 +384,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _searchQuery.value = ""
     }
 
-    /**
-     * Reset the launcher to its initial home state:
-     * FAVORITES category, no search, settings closed.
-     */
     fun resetToHome() {
         _searchQuery.value = ""
         _activeCategory.value = AppCategory.FAVORITES
@@ -499,123 +401,105 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun toggleProfile() {
-        val newProfile = if (_currentProfile.value.type == ProfileType.PERSONAL)
-            Profile.Work else Profile.Personal
-        _currentProfile.value = newProfile
-        profileManager.setActiveProfile(newProfile)
+        viewModelScope.launch {
+            val newProfile = if (profileManager.activeProfile.value.type == ProfileType.PERSONAL)
+                Profile.Work else Profile.Personal
+            profileManager.setActiveProfile(newProfile)
+        }
     }
 
     fun toggleSettings() { _showSettings.value = !_showSettings.value }
 
     fun toggleTheme() {
-        val newVal = !_isDarkTheme.value
-        _isDarkTheme.value = newVal
-        settingsManager.setDarkTheme(newVal)
+        viewModelScope.launch {
+            settingsManager.setDarkTheme(!settingsManager.darkTheme.first())
+        }
     }
 
     fun setShowAppLabels(show: Boolean) {
-        _showAppLabels.value = show
-        settingsManager.setShowAppLabels(show)
+        viewModelScope.launch { settingsManager.setShowAppLabels(show) }
     }
 
     fun setIconSize(size: IconSize) {
-        _iconSize.value = size
-        settingsManager.setIconSize(size.name.lowercase())
+        viewModelScope.launch { settingsManager.setIconSize(size.name.lowercase()) }
     }
 
     fun setShowIconBackground(show: Boolean) {
-        _showIconBackground.value = show
-        settingsManager.setShowIconBackground(show)
+        viewModelScope.launch { settingsManager.setShowIconBackground(show) }
     }
 
     fun setGridColumns(columns: Int) {
-        _gridColumns.value = columns
-        settingsManager.setGridColumns(columns)
+        viewModelScope.launch { settingsManager.setGridColumns(columns) }
     }
 
     fun setCategoryDisplayName(category: AppCategory, name: String) {
-        settingsManager.setCategoryDisplayName(category, name)
-        _categoryConfigs.value = buildCategoryConfigs()
+        viewModelScope.launch { settingsManager.setCategoryDisplayName(category, name) }
     }
 
     fun setCategoryIconName(category: AppCategory, iconName: String) {
-        settingsManager.setCategoryIconName(category, iconName)
-        _categoryConfigs.value = buildCategoryConfigs()
+        viewModelScope.launch { settingsManager.setCategoryIconName(category, iconName) }
     }
 
     fun toggleCategoryHidden(category: AppCategory) {
-        val hidden = settingsManager.getHiddenCategories().contains(category.name)
-        settingsManager.setCategoryHidden(category, !hidden)
-        _categoryConfigs.value = buildCategoryConfigs()
-        _visibleCategories.value = buildVisibleCategories()
+        viewModelScope.launch {
+            val hidden = settingsManager.hiddenCategories.first().contains(category.name)
+            settingsManager.setCategoryHidden(category, !hidden)
+        }
     }
 
     fun resetSettings() {
-        settingsManager.resetAll()
-        _isDarkTheme.value = true
-        _showAppLabels.value = settingsManager.isShowAppLabels()
-        _selectedIconPack.value = null
-        appRepository.clearIconPackCache()
-        _categoryOverrides.value = emptyMap()
-        _categoryConfigs.value = buildCategoryConfigs()
-        _visibleCategories.value = buildVisibleCategories()
-        loadApps()
+        viewModelScope.launch {
+            settingsManager.resetAll()
+            appRepository.clearIconPackCache()
+            refreshApps()
+        }
     }
 
     fun setIconPack(packageName: String?) {
-        settingsManager.setSelectedIconPack(packageName)
-        _selectedIconPack.value = packageName
-        appRepository.clearIconPackCache()
-        loadApps()
+        viewModelScope.launch {
+            settingsManager.setSelectedIconPack(packageName)
+            appRepository.clearIconPackCache()
+            refreshApps()
+        }
     }
 
     fun setCategoryOverride(app: AppModel, category: AppCategory) {
-        val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
-        val key = categoryOverrideKey(app, isWorkApp)
-        settingsManager.setCategoryOverride(key, category)
-        _categoryOverrides.value = settingsManager.getCategoryOverrides()
+        viewModelScope.launch {
+            val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
+            val key = categoryOverrideKey(app, isWorkApp)
+            setCategoryOverrideUseCase(key, category)
+        }
     }
 
     fun clearCategoryOverride(app: AppModel) {
-        val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
-        val key = categoryOverrideKey(app, isWorkApp)
-        settingsManager.clearCategoryOverride(key)
-        _categoryOverrides.value = settingsManager.getCategoryOverrides()
+        viewModelScope.launch {
+            val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
+            val key = categoryOverrideKey(app, isWorkApp)
+            setCategoryOverrideUseCase.clear(key)
+        }
     }
 
     fun launchApp(app: AppModel) {
-        val userHandle = app.userHandle
-        if (userHandle != null) {
-            workProfileManager.launchWorkApp(
-                packageName = app.packageName,
-                activityName = app.activityName,
-                userHandle = userHandle
-            )
-            return
-        }
-
-        val intent = appRepository.getLaunchIntent(app.packageName)
-        if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            getApplication<Application>().startActivity(intent)
-        }
+        launchAppUseCase(app)
     }
 
     fun toggleFavorite(app: AppModel) {
-        profileManager.toggleFavorite(app.packageName)
-        _favorites.value = profileManager.getFavorites()
+        viewModelScope.launch {
+            toggleFavoriteUseCase(app.packageName)
+        }
     }
 
     fun toggleWorkApp(app: AppModel) {
-        profileManager.toggleWorkApp(app.packageName)
-        _workApps.value = profileManager.getWorkApps()
+        viewModelScope.launch {
+            toggleWorkAppUseCase(app.packageName)
+        }
     }
 
     fun openSetDefaultLauncherScreen() {
         try {
             val app = getApplication<Application>()
-            val intent = Intent(app, SetDefaultLauncherActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = android.content.Intent(app, SetDefaultLauncherActivity::class.java)
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             app.startActivity(intent)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -624,30 +508,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun openNotificationSettings() {
         try {
-            val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             getApplication<Application>().startActivity(intent)
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun checkNotificationPermission() {
-        try {
-            val app = getApplication<Application>()
-            val pkgName = app.packageName
-            val flat = android.provider.Settings.Secure.getString(app.contentResolver, "enabled_notification_listeners")
-            _isNotificationAccessGranted.value = flat != null && flat.contains(pkgName)
-        } catch (e: Exception) {
-            _isNotificationAccessGranted.value = false
-        }
-    }
-
     fun openAppInfo(app: AppModel) {
         try {
-            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = android.net.Uri.parse("package:${app.packageName}")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             getApplication<Application>().startActivity(intent)
         } catch (e: Exception) {
@@ -657,9 +530,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun uninstallApp(app: AppModel) {
         try {
-            val intent = Intent(Intent.ACTION_DELETE).apply {
+            val intent = android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
                 data = android.net.Uri.parse("package:${app.packageName}")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             getApplication<Application>().startActivity(intent)
         } catch (e: Exception) {
@@ -667,26 +540,46 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** Refresh work profile and launcher status (called from onResume). */
     fun refreshStatus() {
-        checkLauncherStatus()
-        checkWorkProfile()
-        checkNotificationPermission()
+        refreshSystemStatus()
     }
 
-    private fun iconKey(app: AppModel): String {
-        val handleId = app.userHandle?.hashCode() ?: 0
-        return "${app.packageName}|${app.activityName}|$handleId"
-    }
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private fun categoryOverrideKey(app: AppModel, isWorkApp: Boolean): String {
         val scope = if (isWorkApp) "work" else "personal"
         return "$scope:${app.packageName}"
     }
 
+    // ── Factory ──────────────────────────────────────────────────────────────
+
+    class Factory(
+        private val container: AppContainer,
+        private val application: Application
+    ) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return LauncherViewModel(
+                application = application,
+                appRepository = container.appRepository,
+                profileManager = container.profileManager,
+                settingsManager = container.settingsManager,
+                iconPackManager = container.iconPackManager,
+                workProfileManager = container.workProfileManager,
+                notificationTracker = container.notificationTracker,
+                loadAppsUseCase = container.loadAppsUseCase,
+                launchAppUseCase = container.launchAppUseCase,
+                toggleFavoriteUseCase = container.toggleFavoriteUseCase,
+                toggleWorkAppUseCase = container.toggleWorkAppUseCase,
+                loadIconPacksUseCase = container.loadIconPacksUseCase,
+                getSystemStatusUseCase = container.getSystemStatusUseCase,
+                setCategoryOverrideUseCase = container.setCategoryOverrideUseCase
+            ) as T
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
-        try { getApplication<Application>().unregisterReceiver(packageReceiver) }
-        catch (_: Exception) {}
+        packageChangeReceiver.unregister(getApplication())
     }
 }

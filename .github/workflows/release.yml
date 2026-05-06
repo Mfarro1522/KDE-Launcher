@@ -1,4 +1,4 @@
-name: 🚀 Vøid Launcher Release
+name: 🚀 TAPO-Launcher Release
 
 on:
   push:
@@ -41,16 +41,16 @@ jobs:
       - name: 🗑️ Eliminar local.properties
         run: rm -f local.properties
 
-      - name: 🔨 Compilar APK debug
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: 🔨 Compilar APK release
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: 📦 Copiar APK a artifacts/
         # working-directory es "app/" → "../artifacts" queda en la raíz del repo
         run: |
           VERSION=${{ github.ref_name }}
           mkdir -p ../artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             ../artifacts/VoidLauncher_${VERSION}.apk
+          cp app/build/outputs/apk/release/app-release.apk \
+             ../artifacts/TAPO-Launcher_${VERSION}.apk
           echo "APK copiado:"
           ls -lh ../artifacts/
 
@@ -58,12 +58,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "Vøid Launcher ${{ github.ref_name }}"
+          name: "TAPO-Launcher ${{ github.ref_name }}"
           generate_release_notes: true
           # Ruta relativa a la RAÍZ del repo (no al working-directory)
-          files: artifacts/VoidLauncher_${{ github.ref_name }}.apk
+          files: artifacts/TAPO-Launcher_${{ github.ref_name }}.apk
           body: |
-            ## Vøid Launcher ${{ github.ref_name }}
+            ## TAPO-Launcher ${{ github.ref_name }}
 
             ### 📲 Instalación
             1. Descarga el **APK** desde Assets aquí abajo
@@ -71,6 +71,6 @@ jobs:
             3. Instala y ponlo como launcher predeterminado
 
             ### ⚙️ Requisitos
-            - Android 11+ (API 31)
+            - Android 8.0+ (API 26)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -23,8 +23,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val container = (application as TAPOLauncherApp).container
+
         setContent {
-            val viewModel: LauncherViewModel = viewModel()
+            val viewModel: LauncherViewModel = viewModel(
+                factory = LauncherViewModel.Factory(container, application)
+            )
             launcherViewModel = viewModel
             val uiState by viewModel.uiState.collectAsState()
 
@@ -42,11 +46,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Re-check default launcher status and work profile every time the user
-     * returns to the launcher. This handles the case where they went to
-     * Settings → Default Apps to change the home app.
-     */
     override fun onResume() {
         super.onResume()
         launcherViewModel?.refreshStatus()
@@ -59,10 +58,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Override back press to prevent exiting the launcher.
-     * As a home screen, pressing back should do nothing.
-     */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         val handled = launcherViewModel?.handleBackPress() == true
@@ -71,4 +66,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-

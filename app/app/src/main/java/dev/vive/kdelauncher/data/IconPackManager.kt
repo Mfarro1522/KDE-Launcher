@@ -7,6 +7,7 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import androidx.core.graphics.drawable.toBitmap
+import dev.vive.kdelauncher.domain.repository.IconPackManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
@@ -30,7 +31,7 @@ data class IconPackInfo(
  *
  * Standard intent filter actions used by major launchers:
  */
-class IconPackManager(private val context: Context) {
+class IconPackManager(private val context: Context) : IconPackManager {
 
     private val ICON_PACK_INTENTS = listOf(
         "org.adw.launcher.THEMES",
@@ -48,7 +49,7 @@ class IconPackManager(private val context: Context) {
     /**
      * Query PackageManager for all installed icon packs.
      */
-    suspend fun getInstalledPacks(): List<IconPackInfo> = withContext(Dispatchers.IO) {
+    override suspend fun getInstalledPacks(): List<IconPackInfo> = withContext(Dispatchers.IO) {
         val pm = context.packageManager
         val packs = mutableMapOf<String, IconPackInfo>()
 
@@ -98,7 +99,7 @@ class IconPackManager(private val context: Context) {
      * Load a Bitmap for the given package/activity from the icon pack.
      * Returns null if no mapping exists for this component.
      */
-    suspend fun loadIcon(
+    override suspend fun loadIcon(
         iconPackPackage: String,
         componentPackage: String,
         activityName: String
@@ -205,7 +206,7 @@ class IconPackManager(private val context: Context) {
         }
     }
 
-    fun clearCache() {
+    override fun clearCache() {
         cachedPackage = null
         cachedFilter = emptyMap()
         cachedResources = null
