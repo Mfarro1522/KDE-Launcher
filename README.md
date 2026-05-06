@@ -86,7 +86,7 @@ cd app
 # Debug APK
 ./gradlew assembleDebug
 
-# Producción (minificado + shrinkResources)
+# Producción firmada (minificado + shrinkResources)
 ./gradlew assembleRelease
 
 # Usando el script helper
@@ -94,6 +94,32 @@ cd app
 ```
 
 El APK generado estará en `app/app/build/outputs/apk/debug/` o `app/app/build/outputs/apk/release/`. El script `build-release.sh` copia el release final a `releases/`.
+
+### Firma de release
+
+Los builds `release` necesitan una keystore real para generar un APK instalable fuera de Android Studio.
+
+Variables de entorno requeridas para `assembleRelease`:
+
+```bash
+export TAPO_RELEASE_KEYSTORE_PATH="/ruta/a/tu/release-keystore.jks"
+export TAPO_RELEASE_STORE_PASSWORD="tu_store_password"
+export TAPO_RELEASE_KEY_ALIAS="tu_alias"
+export TAPO_RELEASE_KEY_PASSWORD="tu_key_password"
+```
+
+Secrets requeridos en GitHub Actions para publicar releases instalables:
+
+- `ANDROID_RELEASE_KEYSTORE_BASE64`
+- `ANDROID_RELEASE_STORE_PASSWORD`
+- `ANDROID_RELEASE_KEY_ALIAS`
+- `ANDROID_RELEASE_KEY_PASSWORD`
+
+Para `ANDROID_RELEASE_KEYSTORE_BASE64`, sube el contenido base64 del archivo `.jks`:
+
+```bash
+base64 -w 0 release-keystore.jks
+```
 
 ## Licencia
 

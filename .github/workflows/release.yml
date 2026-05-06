@@ -41,7 +41,36 @@ jobs:
       - name: 🗑️ Eliminar local.properties
         run: rm -f local.properties
 
+      - name: 🔐 Validar secrets de firma release
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          for var in \
+            ANDROID_RELEASE_KEYSTORE_BASE64 \
+            ANDROID_RELEASE_STORE_PASSWORD \
+            ANDROID_RELEASE_KEY_ALIAS \
+            ANDROID_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "Falta el secret requerido: $var"
+              exit 1
+            fi
+          done
+
+      - name: 🔏 Reconstruir keystore de release
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+
       - name: 🔨 Compilar APK release
+        env:
+          TAPO_RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/app/release-keystore.jks
+          TAPO_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          TAPO_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          TAPO_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: 📦 Copiar APK a artifacts/
@@ -53,6 +82,10 @@ jobs:
              ../artifacts/TAPO-Launcher_${VERSION}.apk
           echo "APK copiado:"
           ls -lh ../artifacts/
+
+      - name: 🧹 Limpiar keystore temporal
+        if: always()
+        run: rm -f release-keystore.jks
 
       - name: 🚀 Publicar GitHub Release
         uses: softprops/action-gh-release@v2
@@ -68,7 +101,7 @@ jobs:
             ### 📲 Instalación
             1. Descarga el **APK** desde Assets aquí abajo
             2. Android → Ajustes → Seguridad → Fuentes desconocidas ✓
-            3. Instala y ponlo como launcher predeterminado
+            3. Instala el APK firmado y ponlo como launcher predeterminado
 
             ### ⚙️ Requisitos
             - Android 8.0+ (API 26)

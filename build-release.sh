@@ -10,6 +10,12 @@ echo "Building TAPO-Launcher v$VERSION..."
 
 cd "$(dirname "$0")/app"
 
+if [ -z "$TAPO_RELEASE_KEYSTORE_PATH" ] || [ -z "$TAPO_RELEASE_STORE_PASSWORD" ] || [ -z "$TAPO_RELEASE_KEY_ALIAS" ] || [ -z "$TAPO_RELEASE_KEY_PASSWORD" ]; then
+    echo "Error: release signing env vars are missing."
+    echo "Required: TAPO_RELEASE_KEYSTORE_PATH, TAPO_RELEASE_STORE_PASSWORD, TAPO_RELEASE_KEY_ALIAS, TAPO_RELEASE_KEY_PASSWORD"
+    exit 1
+fi
+
 mkdir -p "../$RELEASES_DIR"
 
 ./gradlew assembleRelease --no-daemon

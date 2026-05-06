@@ -4,6 +4,18 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val releaseKeystorePath = providers.environmentVariable("TAPO_RELEASE_KEYSTORE_PATH")
+val releaseStorePassword = providers.environmentVariable("TAPO_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("TAPO_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("TAPO_RELEASE_KEY_PASSWORD")
+
+val isReleaseSigningConfigured = listOf(
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.orNull.isNullOrBlank() }
+
 android {
     namespace = "dev.vive.kdelauncher"
     compileSdk = 35
@@ -16,8 +28,22 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        create("release") {
+            if (isReleaseSigningConfigured) {
+                storeFile = file(releaseKeystorePath.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -65,4 +91,15 @@ dependencies {
     // Debug
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.tooling.preview)
+}
+
+tasks.configureEach {
+    val isReleasePackagingTask = name.startsWith("assembleRelease") || name.startsWith("bundleRelease")
+    if (isReleasePackagingTask) {
+        doFirst {
+            check(isReleaseSigningConfigured) {
+                "Release signing is not configured. Set TAPO_RELEASE_KEYSTORE_PATH, TAPO_RELEASE_STORE_PASSWORD, TAPO_RELEASE_KEY_ALIAS, and TAPO_RELEASE_KEY_PASSWORD."
+            }
+        }
+    }
 }
