@@ -34,7 +34,8 @@ class MainActivity : ComponentActivity() {
 
             KDELauncherTheme(
                 profile = uiState.currentProfile,
-                isDarkTheme = uiState.isDarkTheme
+                isDarkTheme = uiState.isDarkTheme,
+                colorTheme = uiState.colorTheme
             ) {
                 LauncherScreen(
                     viewModel = viewModel,

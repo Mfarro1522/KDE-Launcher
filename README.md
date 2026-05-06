@@ -74,9 +74,10 @@ app/
 
 ## Estado actual
 
-- La **Fase 2 de refactorización** ya está completada.
-- La app todavía está en **Fase 3: calidad y testing**.
-- El proyecto usa un **launcher real** con soporte para Work Profile, icon packs, ajustes visuales y notificaciones.
+- La **refactorización arquitectónica** ya está completada (Fases 1 a 5).
+- Se implementaron las funcionalidades de **Temas de Color Dev** (Dracula, Tokyo Night, Vercel, Catppuccin, Nord, Gruvbox, One Dark) y **TAPO Labs** (auto-organización experimental de apps con IA a través de Groq, Gemini o Cohere).
+- El proyecto usa un **launcher real** con soporte para Work Profile, icon packs, ajustes visuales, y tematización dinámica.
+- *Nota sobre pruebas:* Siguiendo las reglas del repositorio, el proyecto se mantiene ágil sin la creación activa de suites de tests para las capas de UI experimentales.
 
 ## Build
 
@@ -124,3 +125,7 @@ base64 -w 0 release-keystore.jks
 ## Licencia
 
 [Apache License 2.0](LICENSE)
+
+## Privacidad y Permisos
+
+Consulta el documento de [Permisos y Privacidad](PERMISSIONS.md) para conocer la justificación del uso del permiso `QUERY_ALL_PACKAGES` y otros permisos requeridos.

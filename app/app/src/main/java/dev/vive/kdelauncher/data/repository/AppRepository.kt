@@ -1,17 +1,12 @@
 package dev.vive.kdelauncher.data.repository
 
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
-import android.os.Build
 import android.util.LruCache
-import androidx.core.graphics.drawable.toBitmap
-import dev.vive.kdelauncher.data.IconPackManager as IconPackManagerImpl
 import dev.vive.kdelauncher.data.model.AppCategorizer
+import dev.vive.kdelauncher.data.model.AppIconBitmap
 import dev.vive.kdelauncher.data.model.AppModel
+import dev.vive.kdelauncher.data.platform.AppPlatformGateway
 import dev.vive.kdelauncher.domain.repository.AppRepository
 import dev.vive.kdelauncher.domain.repository.IconPackManager
 import kotlinx.coroutines.Dispatchers
@@ -40,9 +35,11 @@ import kotlinx.coroutines.withContext
  *    from upscaling. The memory cache uses 1/4 of available heap (capped at 32 MB)
  *    to comfortably hold 500+ 128×128 ARGB_8888 icons (~500 MB → ~31 MB).
  */
-class AppRepositoryImpl(private val context: Context) : AppRepository {
-
-    private val iconPackManager: IconPackManager = IconPackManagerImpl(context)
+class AppRepositoryImpl(
+    private val appPackageName: String,
+    private val appPlatformGateway: AppPlatformGateway,
+    private val iconPackManager: IconPackManager
+) : AppRepository {
 
     companion object {
         /**
@@ -75,84 +72,17 @@ class AppRepositoryImpl(private val context: Context) : AppRepository {
      */
     override suspend fun getInstalledApps(
         selectedIconPack: String?
-    ): List<AppModel> = withContext(Dispatchers.IO) {
-        try {
-            val resolveInfos = queryLaunchableApps()
-            val pm = context.packageManager
-            val seen = mutableSetOf<String>()
-
-            resolveInfos
-                .filter { ri ->
-                    val pkg = ri.activityInfo.packageName
-                    if (pkg == context.packageName) return@filter false
-                    seen.add(pkg)
-                }
-                .map { ri ->
-                    val activityInfo = ri.activityInfo
-                    val appInfo = activityInfo.applicationInfo
-                    val androidCategory = appInfo?.category ?: -1
-                    val cacheKey = "${activityInfo.packageName}|${selectedIconPack ?: ""}"
-
-                    val bitmap = iconCache.get(cacheKey) ?: run {
-                        val decoded = loadIconForApp(ri, pm, selectedIconPack,
-                            activityInfo.packageName, activityInfo.name)
-                        if (decoded != null) iconCache.put(cacheKey, decoded)
-                        decoded
-                    }
-
-                    AppModel(
-                        packageName = activityInfo.packageName,
-                        activityName = activityInfo.name,
-                        label = ri.loadLabel(pm).toString(),
-                        iconBitmap = bitmap,
-                        category = AppCategorizer.categorize(activityInfo.packageName, androidCategory)
-                    )
-                }
-                .sortedBy { it.label.lowercase() }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
-        }
-    }
+    ): List<AppModel> = buildAppList(selectedIconPack, loadIcons = true)
 
     /**
      * Fetch app list **without icons** (metadata only) — nearly instant.
      * Use this to populate the UI immediately while icons load in the background.
      */
-    override suspend fun getInstalledAppsMetadata(): List<AppModel> = withContext(Dispatchers.IO) {
-        try {
-            val resolveInfos = queryLaunchableApps()
-            val pm = context.packageManager
-            val seen = mutableSetOf<String>()
-
-            resolveInfos
-                .filter { ri ->
-                    val pkg = ri.activityInfo.packageName
-                    if (pkg == context.packageName) return@filter false
-                    seen.add(pkg)
-                }
-                .map { ri ->
-                    val activityInfo = ri.activityInfo
-                    val appInfo = activityInfo.applicationInfo
-                    AppModel(
-                        packageName = activityInfo.packageName,
-                        activityName = activityInfo.name,
-                        label = ri.loadLabel(pm).toString(),
-                        iconBitmap = null,          // no icon yet
-                        category = AppCategorizer.categorize(
-                            activityInfo.packageName, appInfo?.category ?: -1
-                        )
-                    )
-                }
-                .sortedBy { it.label.lowercase() }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
-        }
-    }
+    override suspend fun getInstalledAppsMetadata(): List<AppModel> =
+        buildAppList(selectedIconPack = null, loadIcons = false)
 
     override fun getLaunchIntent(packageName: String): Intent? =
-        context.packageManager.getLaunchIntentForPackage(packageName)
+        appPlatformGateway.getLaunchIntent(packageName)
 
     override suspend fun getAppIcon(
         packageName: String,
@@ -161,7 +91,6 @@ class AppRepositoryImpl(private val context: Context) : AppRepository {
     ): Bitmap? = withContext(Dispatchers.IO) {
         val cacheKey = "${packageName}|${selectedIconPack ?: ""}"
         iconCache.get(cacheKey) ?: run {
-            val pm = context.packageManager
             val bitmap = if (selectedIconPack != null) {
                 iconPackManager.loadIcon(
                     iconPackPackage = selectedIconPack,
@@ -170,15 +99,7 @@ class AppRepositoryImpl(private val context: Context) : AppRepository {
                 )
             } else {
                 null
-            } ?: try {
-                val activityInfo = pm.getActivityInfo(
-                    ComponentName(packageName, activityName),
-                    0
-                )
-                activityInfo.loadIcon(pm)?.toBitmap(128, 128)
-            } catch (_: Exception) {
-                null
-            }
+            } ?: appPlatformGateway.loadAppIcon(packageName, activityName)
 
             if (bitmap != null) iconCache.put(cacheKey, bitmap)
             bitmap
@@ -196,25 +117,52 @@ class AppRepositoryImpl(private val context: Context) : AppRepository {
 
     // ── Private helpers ─────────────────────────────────────────────────────
 
-    private fun queryLaunchableApps(): List<ResolveInfo> {
-        val pm = context.packageManager
-        val intent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.queryIntentActivities(
-                intent,
-                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL.toLong())
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
+    /**
+     * Unified app list builder. When [loadIcons] is true, icons are decoded
+     * and cached; when false, apps are returned with null icons for fast loading.
+     */
+    private suspend fun buildAppList(
+        selectedIconPack: String?,
+        loadIcons: Boolean
+    ): List<AppModel> = withContext(Dispatchers.IO) {
+        try {
+            val installedApps = appPlatformGateway.queryLaunchableApps(appPackageName)
+
+            installedApps
+                .map { installedApp ->
+                    val icon = if (loadIcons) {
+                        val cacheKey = "${installedApp.packageName}|${selectedIconPack ?: ""}"
+                        val bitmap = iconCache.get(cacheKey) ?: run {
+                            val decoded = loadIconForApp(
+                                selectedIconPack = selectedIconPack,
+                                componentPackage = installedApp.packageName,
+                                activityName = installedApp.activityName
+                            )
+                            if (decoded != null) iconCache.put(cacheKey, decoded)
+                            decoded
+                        }
+                        bitmap?.let { AppIconBitmap(it) }
+                    } else null
+
+                    AppModel(
+                        packageName = installedApp.packageName,
+                        activityName = installedApp.activityName,
+                        label = installedApp.label,
+                        icon = icon,
+                        category = AppCategorizer.categorize(
+                            installedApp.packageName,
+                            installedApp.androidCategory
+                        )
+                    )
+                }
+                .sortedBy { it.label.lowercase() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
 
     private suspend fun loadIconForApp(
-        ri: ResolveInfo,
-        pm: PackageManager,
         selectedIconPack: String?,
         componentPackage: String,
         activityName: String
@@ -224,13 +172,9 @@ class AppRepositoryImpl(private val context: Context) : AppRepository {
                 iconPackPackage = selectedIconPack,
                 componentPackage = componentPackage,
                 activityName = activityName
-            ) ?: try {
-                ri.loadIcon(pm)?.toBitmap(128, 128)
-            } catch (_: Exception) { null }
+            ) ?: appPlatformGateway.loadAppIcon(componentPackage, activityName)
         } else {
-            try {
-                ri.loadIcon(pm)?.toBitmap(128, 128)
-            } catch (_: Exception) { null }
+            appPlatformGateway.loadAppIcon(componentPackage, activityName)
         }
     }
 }

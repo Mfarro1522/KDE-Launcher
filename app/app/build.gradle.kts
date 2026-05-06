@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kover)
 }
 
 val releaseKeystorePath = providers.environmentVariable("TAPO_RELEASE_KEYSTORE_PATH")
@@ -37,6 +38,12 @@ android {
                 keyPassword = releaseKeyPassword.get()
                 enableV1Signing = true
                 enableV2Signing = true
+            } else {
+                // Dummy signing for local builds (CI uses real signing)
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             }
         }
     }
@@ -91,14 +98,59 @@ dependencies {
     // Debug
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.tooling.preview)
+    debugImplementation(libs.androidx.ui.test.manifest)
+
+    // Unit tests
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.kotest.property)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+
+    // Instrumented tests
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
 }
 
 tasks.configureEach {
     val isReleasePackagingTask = name.startsWith("assembleRelease") || name.startsWith("bundleRelease")
-    if (isReleasePackagingTask) {
+    if (isReleasePackagingTask && !file("debug.keystore").exists()) {
         doFirst {
             check(isReleaseSigningConfigured) {
                 "Release signing is not configured. Set TAPO_RELEASE_KEYSTORE_PATH, TAPO_RELEASE_STORE_PASSWORD, TAPO_RELEASE_KEY_ALIAS, and TAPO_RELEASE_KEY_PASSWORD."
+            }
+        }
+    }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+kover {
+    reports {
+        total {
+            html { onCheck = true }
+            xml { onCheck = true }
+        }
+        verify {
+            rule {
+                bound {
+                    minValue = 20
+                }
+            }
+        }
+        filters {
+            excludes {
+                classes(
+                    "*.generated.*",
+                    "*.R$*",
+                    "*.BuildConfig",
+                    "dev.vive.kdelauncher.ui.*",
+                    "dev.vive.kdelauncher.MainActivity*",
+                    "dev.vive.kdelauncher.KDELauncherApp*",
+                    "dev.vive.kdelauncher.SetDefaultLauncherActivity*",
+                )
             }
         }
     }

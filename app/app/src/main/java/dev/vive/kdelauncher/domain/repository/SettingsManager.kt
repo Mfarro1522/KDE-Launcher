@@ -35,5 +35,21 @@ interface SettingsManager {
     suspend fun setCategoryOverride(key: String, category: AppCategory)
     suspend fun clearCategoryOverride(key: String)
 
+    val colorTheme: Flow<String>
+    suspend fun setColorTheme(theme: String)
+
+    val labsEnabled: Flow<Boolean>
+    suspend fun setLabsEnabled(enabled: Boolean)
+
+    val aiProvider: Flow<String>
+    suspend fun setAiProvider(provider: String)
+
+    val aiApiKey: Flow<String>
+    suspend fun setAiApiKey(key: String)
+    suspend fun clearAiApiKey()
+
+    val aiModel: Flow<String>
+    suspend fun setAiModel(model: String)
+
     suspend fun resetAll()
 }

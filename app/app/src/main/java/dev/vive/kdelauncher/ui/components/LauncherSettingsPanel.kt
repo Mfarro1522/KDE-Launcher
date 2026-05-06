@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +55,7 @@ data class CategoryConfig(
 @Composable
 fun LauncherSettingsPanel(
     isDarkTheme: Boolean,
+    colorTheme: dev.vive.kdelauncher.data.model.ColorTheme,
     showAppLabels: Boolean,
     iconSize: IconSize,
     showIconBackground: Boolean,
@@ -60,7 +64,13 @@ fun LauncherSettingsPanel(
     installedIconPacks: List<IconPackInfo>,
     selectedIconPack: String?,
     isLoadingIconPacks: Boolean,
+    labsEnabled: Boolean,
+    aiProvider: dev.vive.kdelauncher.data.model.AiProvider,
+    aiConnectionState: dev.vive.kdelauncher.ui.AiConnectionState,
+    aiModel: String,
+    organizationState: dev.vive.kdelauncher.ui.OrganizationState,
     onToggleTheme: () -> Unit,
+    onColorThemeChange: (dev.vive.kdelauncher.data.model.ColorTheme) -> Unit,
     onToggleAppLabels: () -> Unit,
     onIconSizeChange: (IconSize) -> Unit,
     onIconBackgroundToggle: () -> Unit,
@@ -70,11 +80,19 @@ fun LauncherSettingsPanel(
     onCategoryToggleHidden: (AppCategory) -> Unit,
     onSelectIconPack: (String?) -> Unit,
     onReset: () -> Unit,
+    onToggleLabs: (Boolean) -> Unit,
+    onConnectAi: (dev.vive.kdelauncher.data.model.AiProvider, String) -> Unit,
+    onDisconnectAi: () -> Unit,
+    onSetAiModel: (String) -> Unit,
+    onOrganizeApps: () -> Unit,
+    onApplySuggestions: (List<dev.vive.kdelauncher.data.model.CategorySuggestion>) -> Unit,
+    onCancelOrganization: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
     val accent = LocalLauncherAccent.current
     val scrollState = rememberScrollState()
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
 
     Column(
         modifier = modifier
@@ -101,6 +119,7 @@ fun LauncherSettingsPanel(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .testTag("theme-toggle-row")
                 .clip(RoundedCornerShape(14.dp))
                 .background(colors.surfaceVariant.copy(alpha = 0.6f))
                 .clickable(
@@ -153,6 +172,61 @@ fun LauncherSettingsPanel(
                     uncheckedTrackColor = colors.surfaceVariant,
                 )
             )
+        }
+
+        // ── Tema de color Dev ────────────────────────────
+        SectionLabel("Tema de color")
+
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            dev.vive.kdelauncher.data.model.ColorTheme.entries.forEach { theme ->
+                val isSelected = colorTheme == theme
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSelected) accent.primary.copy(alpha = 0.2f) else colors.surfaceVariant.copy(alpha = 0.5f))
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) accent.primary else colors.border.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable { onColorThemeChange(theme) }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(androidx.compose.ui.graphics.Color(theme.backgroundArgb(isDarkTheme)))
+                                .border(1.dp, colors.border.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (theme == dev.vive.kdelauncher.data.model.ColorTheme.SYSTEM) accent.primary
+                                        else androidx.compose.ui.graphics.Color(theme.accentArgb(isDarkTheme))
+                                    )
+                                    .border(1.dp, colors.border.copy(alpha = 0.5f), CircleShape)
+                            )
+                        }
+                        Text(
+                            text = theme.displayName,
+                            style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                            color = if (isSelected) accent.primary else colors.onBackground
+                        )
+                    }
+                }
+            }
         }
 
         // ── Divider ──────────────────────────────────────
@@ -244,10 +318,11 @@ fun LauncherSettingsPanel(
                         IconSize.LARGE -> "Grande"
                     }
                     val (containerSize, _) = getIconDimensions(size)
-                    
+
                     Box(
                         modifier = Modifier
                             .weight(1f)
+                            .testTag("icon-size-${size.name.lowercase()}")
                             .clip(RoundedCornerShape(10.dp))
                             .background(
                                 if (isSelected) accent.primaryBg
@@ -275,9 +350,9 @@ fun LauncherSettingsPanel(
                                     .size(containerSize.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(
-                                        if (showIconBackground) 
+                                        if (showIconBackground)
                                             colors.surfaceVariant.copy(alpha = 0.8f)
-                                        else 
+                                        else
                                             colors.surface.copy(alpha = 0.5f)
                                     )
                                     .then(
@@ -385,13 +460,18 @@ fun LauncherSettingsPanel(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val (minCols, maxCols) = calculateColumnRange(iconSize, showIconBackground)
+                val (minCols, maxCols) = calculateColumnRange(
+                    iconSize = iconSize,
+                    showIconBackground = showIconBackground,
+                    screenWidthDp = screenWidthDp
+                )
                 (minCols..maxCols).forEach { cols ->
                     val isSelected = gridColumns == cols
-                    
+
                     Box(
                         modifier = Modifier
                             .weight(1f)
+                            .testTag("grid-columns-$cols")
                             .clip(RoundedCornerShape(10.dp))
                             .background(
                                 if (isSelected) accent.primaryBg
@@ -529,12 +609,32 @@ fun LauncherSettingsPanel(
         // ── Divider ──────────────────────────────────────
         HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
 
+        // ── TAPO Labs ─────────────────────────────────────────────
+        LabsSection(
+            labsEnabled = labsEnabled,
+            onToggleLabs = onToggleLabs,
+            aiProvider = aiProvider,
+            aiConnectionState = aiConnectionState,
+            aiModel = aiModel,
+            organizationState = organizationState,
+            onConnectAi = onConnectAi,
+            onDisconnectAi = onDisconnectAi,
+            onSetAiModel = onSetAiModel,
+            onOrganizeApps = onOrganizeApps,
+            onApplySuggestions = onApplySuggestions,
+            onCancelOrganization = onCancelOrganization
+        )
+
+        // ── Divider ──────────────────────────────────────
+        HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
+
         // ── Reset ─────────────────────────────────────────
         var showResetConfirm by remember { mutableStateOf(false) }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .testTag("reset-settings-row")
                 .clip(RoundedCornerShape(14.dp))
                 .background(colors.surfaceVariant.copy(alpha = 0.3f))
                 .clickable(
@@ -873,28 +973,29 @@ private fun IconPackRow(
 
 /**
  * Calculates the valid range of grid columns based on icon size and background.
- * 
+ *
  * This ensures that icons don't overflow or overlap by considering:
  * - Icon container size (based on icon size setting)
  * - Horizontal padding (constant 4dp per side = 8dp total per icon)
  * - Grid spacing (constant 4dp between icons)
  * - Minimum safe space per column to prevent overflow
- * 
+ *
  * Returns Pair(minColumns, maxColumns)
  */
-fun calculateColumnRange(iconSize: IconSize, showIconBackground: Boolean): Pair<Int, Int> {
+fun calculateColumnRange(
+    iconSize: IconSize,
+    showIconBackground: Boolean,
+    screenWidthDp: Float
+): Pair<Int, Int> {
     val (containerSize, _) = getIconDimensions(iconSize)
-    
+
     // Calculate minimum space needed per column
     // Container size + horizontal padding (4dp each side) + some margin
     val minSpacePerColumn = containerSize + 8f + 4f // 8dp padding + 4dp margin
-    
-    // Typical phone screen width in dp (conservative estimate)
-    val screenWidthDp = 360f
-    
+
     // Calculate maximum possible columns
     val maxPossible = (screenWidthDp / minSpacePerColumn).toInt().coerceAtLeast(1)
-    
+
     // Calculate minimum columns based on icon size
     // Larger icons need fewer columns minimum to prevent them from being too small
     val minColumns = when (iconSize) {
@@ -902,7 +1003,7 @@ fun calculateColumnRange(iconSize: IconSize, showIconBackground: Boolean): Pair<
         IconSize.MEDIUM -> 3
         IconSize.SMALL -> 4
     }
-    
+
     // Adjust based on background visibility
     // Icons without background can be packed slightly tighter
     val adjustedMax = if (!showIconBackground) {
@@ -910,10 +1011,10 @@ fun calculateColumnRange(iconSize: IconSize, showIconBackground: Boolean): Pair<
     } else {
         maxPossible
     }
-    
+
     // Ensure we have at least a reasonable range
     val effectiveMin = minOf(minColumns, adjustedMax)
     val effectiveMax = maxOf(effectiveMin + 1, adjustedMax).coerceAtMost(6)
-    
+
     return Pair(effectiveMin, effectiveMax)
 }

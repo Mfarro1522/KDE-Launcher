@@ -13,16 +13,14 @@ class GetSystemStatusUseCase(
     data class Status(
         val isDefaultLauncher: Boolean,
         val hasRealWorkProfile: Boolean,
-        val isWorkProfileLocked: Boolean,
-        val isNotificationAccessGranted: Boolean
+        val isWorkProfileLocked: Boolean
     )
 
     operator fun invoke(): Status {
         val isDefault = checkDefaultLauncher()
         val hasWork = workProfileManager.hasRealWorkProfile()
         val workLocked = hasWork && workProfileManager.isWorkProfileLocked()
-        val notifGranted = checkNotificationAccess()
-        return Status(isDefault, hasWork, workLocked, notifGranted)
+        return Status(isDefault, hasWork, workLocked)
     }
 
     private fun checkDefaultLauncher(): Boolean {
@@ -41,18 +39,6 @@ class GetSystemStatusUseCase(
             }
         } catch (e: Exception) {
             true
-        }
-    }
-
-    private fun checkNotificationAccess(): Boolean {
-        return try {
-            val pkgName = app.packageName
-            val flat = android.provider.Settings.Secure.getString(
-                app.contentResolver, "enabled_notification_listeners"
-            )
-            flat != null && flat.contains(pkgName)
-        } catch (e: Exception) {
-            false
         }
     }
 }

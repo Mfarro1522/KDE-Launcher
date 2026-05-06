@@ -1,18 +1,41 @@
 package dev.vive.kdelauncher.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
 import dev.vive.kdelauncher.ui.theme.LocalColors
+import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
 
 @Composable
 fun AppGrid(
@@ -37,12 +60,26 @@ fun AppGrid(
     val config = categoryConfigs.find { it.category == activeCategory }
     val categoryName = config?.displayName ?: activeCategory.displayName
 
+    val gridState = rememberLazyGridState()
+
+    var menuApp by remember { mutableStateOf<AppModel?>(null) }
+    var showCategoryPicker by remember { mutableStateOf<AppModel?>(null) }
+
+    val categoryOptions = remember(visibleCategories, categoryConfigs) {
+        visibleCategories
+            .filter { it != AppCategory.FAVORITES && it != AppCategory.ALL }
+            .map { cat ->
+                val name = categoryConfigs.find { it.category == cat }?.displayName
+                    ?: cat.displayName
+                cat to name
+            }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 8.dp)
     ) {
-        // Category header
         if (searchQuery.isBlank()) {
             Row(
                 modifier = Modifier
@@ -73,7 +110,6 @@ fun AppGrid(
         }
 
         if (apps.isEmpty()) {
-            // Empty state
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -93,6 +129,7 @@ fun AppGrid(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(gridColumns),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
             ) {
@@ -100,14 +137,7 @@ fun AppGrid(
                     AppIcon(
                         app = app,
                         onClick = { onAppClick(app) },
-                        onToggleFavorite = { onToggleFavorite(app) },
-                        onAssignCategory = { category -> onAssignCategory(app, category) },
-                        onClearCategory = { onClearCategory(app) },
-                        onAppInfo = { onAppInfo(app) },
-                        onUninstall = { onUninstall(app) },
-                        activeCategory = activeCategory,
-                        categoryConfigs = categoryConfigs,
-                        visibleCategories = visibleCategories,
+                        onLongPress = { menuApp = app },
                         showLabel = showAppLabels,
                         iconSize = iconSize,
                         showIconBackground = showIconBackground
@@ -115,5 +145,160 @@ fun AppGrid(
                 }
             }
         }
+    }
+
+    val menuAppCurrent = menuApp
+    if (menuAppCurrent != null) {
+        val accent = LocalLauncherAccent.current
+        val isFavorite = menuAppCurrent.isFavorite
+        val showRemoveAction = activeCategory != AppCategory.ALL
+        val onRemove = if (activeCategory == AppCategory.FAVORITES) {
+            { onToggleFavorite(menuAppCurrent) }
+        } else {
+            { onClearCategory(menuAppCurrent) }
+        }
+        val favoriteIcon = if (isFavorite) Icons.Rounded.Star else Icons.Rounded.StarBorder
+        val menuShape = RoundedCornerShape(14.dp)
+        val menuItemBg = colors.surfaceVariant.copy(alpha = 0.7f)
+
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = { menuApp = null },
+            offset = DpOffset(6.dp, 6.dp),
+            modifier = Modifier
+                .widthIn(min = 180.dp)
+                .clip(menuShape)
+                .background(colors.surface)
+                .border(1.dp, colors.border.copy(alpha = 0.8f), menuShape)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(menuItemBg)
+                            .clickable {
+                                menuApp = null
+                                onToggleFavorite(menuAppCurrent)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = favoriteIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = if (isFavorite) accent.primary else colors.onSurfaceVariant
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(menuItemBg)
+                            .clickable {
+                                menuApp = null
+                                showCategoryPicker = menuAppCurrent
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = colors.onSurfaceVariant
+                        )
+                    }
+
+                    if (showRemoveAction) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(menuItemBg)
+                                .clickable {
+                                    menuApp = null
+                                    onRemove()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.DeleteOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = colors.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(
+                    color = colors.border.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                DropdownMenuItem(
+                    text = { Text("Información", style = LauncherTypography.bodyMedium) },
+                    onClick = {
+                        menuApp = null
+                        onAppInfo(menuAppCurrent)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(20.dp))
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                )
+
+                DropdownMenuItem(
+                    text = { Text("Desinstalar", style = LauncherTypography.bodyMedium) },
+                    onClick = {
+                        menuApp = null
+                        onUninstall(menuAppCurrent)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                )
+            }
+        }
+    }
+
+    val categoryApp = showCategoryPicker
+    if (categoryApp != null) {
+        AlertDialog(
+            onDismissRequest = { showCategoryPicker = null },
+            title = { Text("Elegir categoría") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    categoryOptions.forEach { (category, label) ->
+                        TextButton(onClick = {
+                            onAssignCategory(categoryApp, category)
+                            showCategoryPicker = null
+                        }) {
+                            Text(label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCategoryPicker = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }

@@ -6,14 +6,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.vive.kdelauncher.AppContainer
-import dev.vive.kdelauncher.SetDefaultLauncherActivity
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.data.model.Profile
 import dev.vive.kdelauncher.data.model.ProfileType
 import dev.vive.kdelauncher.domain.repository.AppRepository
-import dev.vive.kdelauncher.domain.repository.IconPackManager
-import dev.vive.kdelauncher.domain.repository.NotificationTracker
 import dev.vive.kdelauncher.domain.repository.ProfileManager
 import dev.vive.kdelauncher.domain.repository.SettingsManager
 import dev.vive.kdelauncher.domain.repository.WorkProfileManager
@@ -21,9 +18,12 @@ import dev.vive.kdelauncher.domain.usecase.GetSystemStatusUseCase
 import dev.vive.kdelauncher.domain.usecase.LaunchAppUseCase
 import dev.vive.kdelauncher.domain.usecase.LoadAppsUseCase
 import dev.vive.kdelauncher.domain.usecase.LoadIconPacksUseCase
+import dev.vive.kdelauncher.domain.usecase.OpenAppInfoUseCase
+import dev.vive.kdelauncher.domain.usecase.OpenSetDefaultLauncherUseCase
 import dev.vive.kdelauncher.domain.usecase.SetCategoryOverrideUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleFavoriteUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleWorkAppUseCase
+import dev.vive.kdelauncher.domain.usecase.UninstallAppUseCase
 import dev.vive.kdelauncher.service.PackageChangeReceiver
 import dev.vive.kdelauncher.ui.components.CategoryConfig
 import dev.vive.kdelauncher.ui.components.IconSize
@@ -37,6 +37,20 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+sealed class AiConnectionState {
+    object Idle : AiConnectionState()
+    object Loading : AiConnectionState()
+    data class Connected(val models: List<String>) : AiConnectionState()
+    data class Error(val message: String) : AiConnectionState()
+}
+
+sealed class OrganizationState {
+    object Idle : OrganizationState()
+    object Loading : OrganizationState()
+    data class Preview(val suggestions: List<dev.vive.kdelauncher.data.model.CategorySuggestion>) : OrganizationState()
+    object Applied : OrganizationState()
+}
+
 /**
  * Complete UI state for the launcher screen.
  */
@@ -47,6 +61,7 @@ data class LauncherUiState(
     val activeCategory: AppCategory = AppCategory.FAVORITES,
     val currentProfile: Profile = Profile.Personal,
     val isDarkTheme: Boolean = true,
+    val colorTheme: dev.vive.kdelauncher.data.model.ColorTheme = dev.vive.kdelauncher.data.model.ColorTheme.SYSTEM,
     val showAppLabels: Boolean = true,
     val showSettings: Boolean = false,
     val isLoading: Boolean = true,
@@ -62,7 +77,11 @@ data class LauncherUiState(
     val isDefaultLauncher: Boolean = true,
     val hasRealWorkProfile: Boolean = false,
     val isWorkProfileLocked: Boolean = false,
-    val isNotificationAccessGranted: Boolean = false,
+    val labsEnabled: Boolean = false,
+    val aiProvider: dev.vive.kdelauncher.data.model.AiProvider = dev.vive.kdelauncher.data.model.AiProvider.GROQ,
+    val aiConnectionState: AiConnectionState = AiConnectionState.Idle,
+    val aiModel: String = "",
+    val organizationState: OrganizationState = OrganizationState.Idle,
 )
 
 class LauncherViewModel(
@@ -70,9 +89,7 @@ class LauncherViewModel(
     private val appRepository: AppRepository,
     private val profileManager: ProfileManager,
     private val settingsManager: SettingsManager,
-    private val iconPackManager: IconPackManager,
     private val workProfileManager: WorkProfileManager,
-    private val notificationTracker: NotificationTracker,
     private val loadAppsUseCase: LoadAppsUseCase,
     private val launchAppUseCase: LaunchAppUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
@@ -80,6 +97,11 @@ class LauncherViewModel(
     private val loadIconPacksUseCase: LoadIconPacksUseCase,
     private val getSystemStatusUseCase: GetSystemStatusUseCase,
     private val setCategoryOverrideUseCase: SetCategoryOverrideUseCase,
+    private val openSetDefaultLauncherUseCase: OpenSetDefaultLauncherUseCase,
+    private val openAppInfoUseCase: OpenAppInfoUseCase,
+    private val uninstallAppUseCase: UninstallAppUseCase,
+    private val connectAiProviderUseCase: dev.vive.kdelauncher.domain.usecase.ConnectAiProviderUseCase,
+    private val organizeAppsWithAiUseCase: dev.vive.kdelauncher.domain.usecase.OrganizeAppsWithAiUseCase,
 ) : AndroidViewModel(application) {
 
     // ── UI-controlled state ──────────────────────────────────────────────────
@@ -92,11 +114,13 @@ class LauncherViewModel(
     private val _installedIconPacks = MutableStateFlow<List<dev.vive.kdelauncher.data.IconPackInfo>>(emptyList())
     private val _homeResetCounter = MutableStateFlow(0)
 
+    private val _aiConnectionState = MutableStateFlow<AiConnectionState>(AiConnectionState.Idle)
+    private val _organizationState = MutableStateFlow<OrganizationState>(OrganizationState.Idle)
+
     // ── System status ────────────────────────────────────────────────────────
     private val _isDefaultLauncher = MutableStateFlow(true)
     private val _hasRealWorkProfile = MutableStateFlow(false)
     private val _isWorkProfileLocked = MutableStateFlow(false)
-    private val _isNotificationAccessGranted = MutableStateFlow(false)
 
     // ── Package change receiver ──────────────────────────────────────────────
     private val packageChangeReceiver = PackageChangeReceiver(
@@ -123,197 +147,124 @@ class LauncherViewModel(
         AppCategory.entries.filter { it.name !in hidden }
     }
 
-    // ── Sub-combines (grouped by domain) ─────────────────────────────────────
-
-    private data class AppInput(
-        val allApps: List<AppModel>,
-        val searchQuery: String,
-        val activeCategory: AppCategory
-    )
-
     private val appInput = combine(_allApps, _searchQuery, _activeCategory) { apps, q, cat ->
-        AppInput(apps, q, cat)
+        LauncherAppInput(apps, q, cat)
     }
 
-    private data class SettingsInputPart1(
-        val darkTheme: Boolean,
-        val showAppLabels: Boolean,
-        val showSettings: Boolean,
-        val isLoading: Boolean,
-        val iconSize: IconSize
-    )
-
-    private val settingsInputPart1 = combine(
+    private val settingsThemeInput = combine(
         settingsManager.darkTheme,
+        settingsManager.colorTheme
+    ) { dark, themeStr ->
+        val theme = runCatching { dev.vive.kdelauncher.data.model.ColorTheme.valueOf(themeStr.uppercase()) }
+            .getOrDefault(dev.vive.kdelauncher.data.model.ColorTheme.SYSTEM)
+        Pair(dark, theme)
+    }
+
+    private val settingsDisplayInput = combine(
+        settingsThemeInput,
         settingsManager.showAppLabels,
         _showSettings,
         _isLoading,
         settingsManager.iconSize.map { parseIconSize(it) }
-    ) { dark, labels, showSettings, loading, size ->
-        SettingsInputPart1(dark, labels, showSettings, loading, size)
+    ) { themeInput, labels, showSettings, loading, size ->
+        LauncherSettingsDisplayInput(themeInput.first, themeInput.second, labels, showSettings, loading, size)
     }
 
-    private data class SettingsInputPart2(
-        val showIconBackground: Boolean,
-        val gridColumns: Int,
-        val selectedIconPack: String?,
-        val isLoadingIconPacks: Boolean,
-        val installedIconPacks: List<dev.vive.kdelauncher.data.IconPackInfo>
-    )
-
-    private val settingsInputPart2 = combine(
+    private val settingsIconInput = combine(
         settingsManager.showIconBackground,
         settingsManager.gridColumns,
         settingsManager.selectedIconPack,
         _isLoadingIconPacks,
         _installedIconPacks
     ) { bg, cols, pack, loadingPacks, packs ->
-        SettingsInputPart2(bg, cols, pack, loadingPacks, packs)
+        LauncherSettingsIconInput(bg, cols, pack, loadingPacks, packs)
     }
-
-    private data class ProfileInput(
-        val currentProfile: Profile,
-        val favorites: Set<String>,
-        val workApps: Set<String>
-    )
 
     private val profileInput = combine(
         profileManager.activeProfile,
-        profileManager.favorites,
+        profileManager.personalFavorites,
+        profileManager.workFavorites,
         profileManager.workApps
-    ) { profile, fav, work ->
-        ProfileInput(profile, fav, work)
+    ) { profile, personalFavorites, workFavorites, workApps ->
+        LauncherProfileInput(profile, personalFavorites, workFavorites, workApps)
     }
-
-    private data class CategoryInput(
-        val categoryConfigs: List<CategoryConfig>,
-        val visibleCategories: List<AppCategory>,
-        val categoryOverrides: Map<String, AppCategory>
-    )
 
     private val categoryInput = combine(
         categoryConfigsFlow,
         visibleCategoriesFlow,
         settingsManager.categoryOverrides
     ) { configs, visible, overrides ->
-        CategoryInput(configs, visible, overrides)
+        LauncherCategoryInput(configs, visible, overrides)
     }
-
-    private data class SystemInput(
-        val isDefaultLauncher: Boolean,
-        val hasRealWorkProfile: Boolean,
-        val isWorkProfileLocked: Boolean,
-        val isNotificationAccessGranted: Boolean
-    )
 
     private val systemInput = combine(
         _isDefaultLauncher,
         _hasRealWorkProfile,
-        _isWorkProfileLocked,
-        _isNotificationAccessGranted
-    ) { def, work, locked, notif ->
-        SystemInput(def, work, locked, notif)
+        _isWorkProfileLocked
+    ) { def, work, locked ->
+        LauncherSystemInput(def, work, locked)
     }
 
-    // ── Main UI state ────────────────────────────────────────────────────────
+    private val appContentInput = combine(
+        appInput,
+        profileInput,
+        categoryInput,
+        systemInput
+    ) { app, profile, category, system ->
+        LauncherAppContentInput(
+            app = app,
+            profile = profile,
+            category = category,
+            system = system
+        )
+    }
 
-    private data class UiInput(
-        val app: AppInput,
-        val settings1: SettingsInputPart1,
-        val settings2: SettingsInputPart2,
-        val profile: ProfileInput,
-        val category: CategoryInput,
-        val system: SystemInput,
-        val notificationMap: Map<String, Int>
-    )
+    private val aiSettingsInput = combine(
+        settingsManager.labsEnabled,
+        settingsManager.aiProvider,
+        settingsManager.aiModel,
+        _aiConnectionState,
+        _organizationState
+    ) { enabled, providerStr, model, connState, orgState ->
+        val provider = runCatching { dev.vive.kdelauncher.data.model.AiProvider.valueOf(providerStr.uppercase()) }
+            .getOrDefault(dev.vive.kdelauncher.data.model.AiProvider.GROQ)
+        LauncherAiInput(enabled, provider, model, connState, orgState)
+    }
 
     private val uiInput = combine(
-        combine(appInput, settingsInputPart1, settingsInputPart2) { app, s1, s2 ->
-            Triple(app, s1, s2)
+        combine(appInput, settingsDisplayInput, settingsIconInput) { app, display, icon ->
+            Triple(app, display, icon)
         },
         combine(profileInput, categoryInput, systemInput) { profile, cat, sys ->
             Triple(profile, cat, sys)
         },
-        notificationTracker.notificationCounts
-    ) { appSettings, profileCatSys, notificationMap ->
-        UiInput(
+        aiSettingsInput
+    ) { appSettings, profileCatSys, aiSettings ->
+        LauncherUiProjectionInput(
             app = appSettings.first,
-            settings1 = appSettings.second,
-            settings2 = appSettings.third,
+            settingsDisplay = appSettings.second,
+            settingsIcon = appSettings.third,
             profile = profileCatSys.first,
             category = profileCatSys.second,
             system = profileCatSys.third,
-            notificationMap = notificationMap
+            ai = aiSettings
         )
     }
 
-    val uiState: StateFlow<LauncherUiState> = uiInput.map { input ->
-        val hasWork = input.system.hasRealWorkProfile
-        val favorites = input.profile.favorites
-        val workApps = input.profile.workApps
-        val categoryOverrides = input.category.categoryOverrides
-
-        val appsWithMeta = input.app.allApps.map { appModel ->
-            val isWorkApp = if (hasWork) appModel.userHandle != null
-            else workApps.contains(appModel.packageName)
-            val overrideKey = categoryOverrideKey(appModel, isWorkApp)
-            val overrideCategory = categoryOverrides[overrideKey]
-            appModel.copy(
-                isFavorite = favorites.contains(appModel.packageName),
-                profileTag = if (isWorkApp) ProfileType.WORK else ProfileType.PERSONAL,
-                category = overrideCategory ?: appModel.category,
-                notificationCount = input.notificationMap[appModel.packageName] ?: 0
+    private val appContentState = appContentInput
+        .map(LauncherUiStateMapper::mapAppContent)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = LauncherAppContentState(
+                allApps = emptyList(),
+                filteredApps = emptyList(),
+                appCounts = emptyMap()
             )
-        }
-
-        val profileFiltered = when (input.profile.currentProfile.type) {
-            ProfileType.WORK -> appsWithMeta.filter { it.profileTag == ProfileType.WORK }
-            ProfileType.PERSONAL -> appsWithMeta.filter { it.profileTag == ProfileType.PERSONAL }
-        }
-
-        val filtered = if (input.app.searchQuery.isNotBlank()) {
-            appsWithMeta.filter {
-                it.label.contains(input.app.searchQuery, ignoreCase = true) ||
-                    it.packageName.contains(input.app.searchQuery, ignoreCase = true)
-            }
-        } else when (input.app.activeCategory) {
-            AppCategory.FAVORITES -> profileFiltered.filter { it.isFavorite }
-            AppCategory.ALL -> profileFiltered
-            else -> profileFiltered.filter { it.category == input.app.activeCategory }
-        }
-
-        val counts = AppCategory.entries.associateWith { cat ->
-            when (cat) {
-                AppCategory.FAVORITES -> profileFiltered.count { it.isFavorite }
-                AppCategory.ALL -> profileFiltered.size
-                else -> profileFiltered.count { it.category == cat }
-            }
-        }
-
-        LauncherUiState(
-            allApps = appsWithMeta,
-            filteredApps = filtered,
-            searchQuery = input.app.searchQuery,
-            activeCategory = input.app.activeCategory,
-            currentProfile = input.profile.currentProfile,
-            isDarkTheme = input.settings1.darkTheme,
-            showAppLabels = input.settings1.showAppLabels,
-            showSettings = input.settings1.showSettings,
-            isLoading = input.settings1.isLoading,
-            appCounts = counts,
-            categoryConfigs = input.category.categoryConfigs,
-            visibleCategories = input.category.visibleCategories,
-            iconSize = input.settings1.iconSize,
-            showIconBackground = input.settings2.showIconBackground,
-            gridColumns = input.settings2.gridColumns,
-            installedIconPacks = input.settings2.installedIconPacks,
-            selectedIconPack = input.settings2.selectedIconPack,
-            isLoadingIconPacks = input.settings2.isLoadingIconPacks,
-            isDefaultLauncher = input.system.isDefaultLauncher,
-            hasRealWorkProfile = input.system.hasRealWorkProfile,
-            isWorkProfileLocked = input.system.isWorkProfileLocked,
-            isNotificationAccessGranted = input.system.isNotificationAccessGranted,
         )
+
+    val uiState: StateFlow<LauncherUiState> = combine(uiInput, appContentState) { input, appContent ->
+        LauncherUiStateMapper.map(input, appContent)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -340,9 +291,7 @@ class LauncherViewModel(
             try {
                 _isLoading.value = true
                 val selectedPack = settingsManager.selectedIconPack.first()
-                val (metadataApps, fullApps) = loadAppsUseCase(selectedPack)
-                _allApps.value = metadataApps
-                _isLoading.value = false
+                val (_, fullApps) = loadAppsUseCase(selectedPack)
                 _allApps.value = fullApps
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -372,7 +321,6 @@ class LauncherViewModel(
         _isDefaultLauncher.value = status.isDefaultLauncher
         _hasRealWorkProfile.value = status.hasRealWorkProfile
         _isWorkProfileLocked.value = status.isWorkProfileLocked
-        _isNotificationAccessGranted.value = status.isNotificationAccessGranted
     }
 
     // ── User actions ─────────────────────────────────────────────────────────
@@ -413,6 +361,12 @@ class LauncherViewModel(
     fun toggleTheme() {
         viewModelScope.launch {
             settingsManager.setDarkTheme(!settingsManager.darkTheme.first())
+        }
+    }
+
+    fun setColorTheme(theme: dev.vive.kdelauncher.data.model.ColorTheme) {
+        viewModelScope.launch {
+            settingsManager.setColorTheme(theme.name)
         }
     }
 
@@ -485,7 +439,12 @@ class LauncherViewModel(
 
     fun toggleFavorite(app: AppModel) {
         viewModelScope.launch {
-            toggleFavoriteUseCase(app.packageName)
+            val profile = if (app.userHandle != null || app.profileTag == ProfileType.WORK) {
+                Profile.Work
+            } else {
+                Profile.Personal
+            }
+            toggleFavoriteUseCase(profile, app.packageName)
         }
     }
 
@@ -497,32 +456,16 @@ class LauncherViewModel(
 
     fun openSetDefaultLauncherScreen() {
         try {
-            val app = getApplication<Application>()
-            val intent = android.content.Intent(app, SetDefaultLauncherActivity::class.java)
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            app.startActivity(intent)
+            openSetDefaultLauncherUseCase()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    fun openNotificationSettings() {
-        try {
-            val intent = android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            getApplication<Application>().startActivity(intent)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
 
     fun openAppInfo(app: AppModel) {
         try {
-            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.parse("package:${app.packageName}")
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            getApplication<Application>().startActivity(intent)
+            openAppInfoUseCase(app)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -530,11 +473,7 @@ class LauncherViewModel(
 
     fun uninstallApp(app: AppModel) {
         try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                data = android.net.Uri.parse("package:${app.packageName}")
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            getApplication<Application>().startActivity(intent)
+            uninstallAppUseCase(app)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -544,11 +483,86 @@ class LauncherViewModel(
         refreshSystemStatus()
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // ── TAPO Labs (AI) ───────────────────────────────────────────────────────
 
-    private fun categoryOverrideKey(app: AppModel, isWorkApp: Boolean): String {
-        val scope = if (isWorkApp) "work" else "personal"
-        return "$scope:${app.packageName}"
+    fun setLabsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLabsEnabled(enabled)
+        }
+    }
+
+    fun connectAiProvider(provider: dev.vive.kdelauncher.data.model.AiProvider, apiKey: String) {
+        viewModelScope.launch {
+            _aiConnectionState.value = AiConnectionState.Loading
+            settingsManager.setAiProvider(provider.name)
+            settingsManager.setAiApiKey(apiKey)
+
+            val result = connectAiProviderUseCase(provider, apiKey)
+            result.onSuccess { models ->
+                _aiConnectionState.value = AiConnectionState.Connected(models)
+                if (models.isNotEmpty()) {
+                    settingsManager.setAiModel(models.first())
+                }
+            }.onFailure { error ->
+                _aiConnectionState.value = AiConnectionState.Error(error.message ?: "Error desconocido")
+                settingsManager.clearAiApiKey()
+            }
+        }
+    }
+
+    fun disconnectAiProvider() {
+        viewModelScope.launch {
+            settingsManager.clearAiApiKey()
+            _aiConnectionState.value = AiConnectionState.Idle
+            _organizationState.value = OrganizationState.Idle
+        }
+    }
+
+    fun setAiModel(model: String) {
+        viewModelScope.launch {
+            settingsManager.setAiModel(model)
+        }
+    }
+
+    fun organizeAppsWithAi() {
+        viewModelScope.launch {
+            _organizationState.value = OrganizationState.Loading
+            val providerStr = settingsManager.aiProvider.first()
+            val apiKey = settingsManager.aiApiKey.first()
+            val model = settingsManager.aiModel.first()
+
+            val provider = runCatching { dev.vive.kdelauncher.data.model.AiProvider.valueOf(providerStr) }
+                .getOrDefault(dev.vive.kdelauncher.data.model.AiProvider.GROQ)
+
+            val apps = _allApps.value
+            val categories = dev.vive.kdelauncher.data.model.AppCategory.entries
+
+            val result = organizeAppsWithAiUseCase(apps, categories, provider, apiKey, model)
+            result.onSuccess { suggestions ->
+                _organizationState.value = OrganizationState.Preview(suggestions)
+            }.onFailure {
+                _organizationState.value = OrganizationState.Idle
+            }
+        }
+    }
+
+    fun applyAiSuggestions(selected: List<dev.vive.kdelauncher.data.model.CategorySuggestion>) {
+        viewModelScope.launch {
+            _organizationState.value = OrganizationState.Loading
+            selected.forEach { suggestion ->
+                val app = _allApps.value.find { it.packageName == suggestion.packageName }
+                if (app != null) {
+                    val isWorkApp = app.userHandle != null || app.profileTag == ProfileType.WORK
+                    val key = categoryOverrideKey(app, isWorkApp)
+                    setCategoryOverrideUseCase(key, suggestion.suggestedCategory)
+                }
+            }
+            _organizationState.value = OrganizationState.Applied
+        }
+    }
+
+    fun cancelAiOrganization() {
+        _organizationState.value = OrganizationState.Idle
     }
 
     // ── Factory ──────────────────────────────────────────────────────────────
@@ -564,16 +578,19 @@ class LauncherViewModel(
                 appRepository = container.appRepository,
                 profileManager = container.profileManager,
                 settingsManager = container.settingsManager,
-                iconPackManager = container.iconPackManager,
                 workProfileManager = container.workProfileManager,
-                notificationTracker = container.notificationTracker,
                 loadAppsUseCase = container.loadAppsUseCase,
                 launchAppUseCase = container.launchAppUseCase,
                 toggleFavoriteUseCase = container.toggleFavoriteUseCase,
                 toggleWorkAppUseCase = container.toggleWorkAppUseCase,
                 loadIconPacksUseCase = container.loadIconPacksUseCase,
                 getSystemStatusUseCase = container.getSystemStatusUseCase,
-                setCategoryOverrideUseCase = container.setCategoryOverrideUseCase
+                setCategoryOverrideUseCase = container.setCategoryOverrideUseCase,
+                openSetDefaultLauncherUseCase = container.openSetDefaultLauncherUseCase,
+                openAppInfoUseCase = container.openAppInfoUseCase,
+                uninstallAppUseCase = container.uninstallAppUseCase,
+                connectAiProviderUseCase = container.connectAiProviderUseCase,
+                organizeAppsWithAiUseCase = container.organizeAppsWithAiUseCase,
             ) as T
         }
     }

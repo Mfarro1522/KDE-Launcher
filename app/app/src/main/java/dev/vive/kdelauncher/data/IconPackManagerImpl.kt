@@ -31,7 +31,7 @@ data class IconPackInfo(
  *
  * Standard intent filter actions used by major launchers:
  */
-class IconPackManager(private val context: Context) : IconPackManager {
+class IconPackManagerImpl(private val context: Context) : IconPackManager {
 
     private val ICON_PACK_INTENTS = listOf(
         "org.adw.launcher.THEMES",

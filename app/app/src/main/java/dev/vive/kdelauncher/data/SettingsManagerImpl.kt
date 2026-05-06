@@ -25,6 +25,11 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         val GRID_COLUMNS = intPreferencesKey("grid_columns")
         val HIDDEN_CATEGORIES = stringSetPreferencesKey("hidden_categories")
         val CATEGORY_OVERRIDES = stringSetPreferencesKey("app_category_overrides")
+        val COLOR_THEME = stringPreferencesKey("color_theme")
+        val LABS_ENABLED = booleanPreferencesKey("labs_enabled")
+        val AI_PROVIDER = stringPreferencesKey("ai_provider")
+        val AI_API_KEY = stringPreferencesKey("ai_api_key")
+        val AI_MODEL = stringPreferencesKey("ai_model")
 
         fun categoryNameKey(category: AppCategory) =
             stringPreferencesKey("cat_name_${category.name}")
@@ -159,6 +164,47 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
                 prefs[Keys.CATEGORY_OVERRIDES] = current
             }
         }
+    }
+
+    // --- Themes & Labs ---
+
+    override val colorTheme: Flow<String> = context.dataStore.data
+        .map { it[Keys.COLOR_THEME] ?: "system" }
+
+    override suspend fun setColorTheme(theme: String) {
+        context.dataStore.edit { it[Keys.COLOR_THEME] = theme }
+    }
+
+    override val labsEnabled: Flow<Boolean> = context.dataStore.data
+        .map { it[Keys.LABS_ENABLED] ?: false }
+
+    override suspend fun setLabsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.LABS_ENABLED] = enabled }
+    }
+
+    override val aiProvider: Flow<String> = context.dataStore.data
+        .map { it[Keys.AI_PROVIDER] ?: "groq" }
+
+    override suspend fun setAiProvider(provider: String) {
+        context.dataStore.edit { it[Keys.AI_PROVIDER] = provider }
+    }
+
+    override val aiApiKey: Flow<String> = context.dataStore.data
+        .map { it[Keys.AI_API_KEY] ?: "" }
+
+    override suspend fun setAiApiKey(key: String) {
+        context.dataStore.edit { it[Keys.AI_API_KEY] = key }
+    }
+
+    override suspend fun clearAiApiKey() {
+        context.dataStore.edit { it.remove(Keys.AI_API_KEY) }
+    }
+
+    override val aiModel: Flow<String> = context.dataStore.data
+        .map { it[Keys.AI_MODEL] ?: "" }
+
+    override suspend fun setAiModel(model: String) {
+        context.dataStore.edit { it[Keys.AI_MODEL] = model }
     }
 
     // --- Reset ---

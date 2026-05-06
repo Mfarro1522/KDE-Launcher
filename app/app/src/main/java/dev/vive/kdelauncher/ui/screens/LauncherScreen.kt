@@ -11,12 +11,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.ui.LauncherViewModel
 import dev.vive.kdelauncher.ui.components.*
+import dev.vive.kdelauncher.ui.theme.LauncherTypography
 import dev.vive.kdelauncher.ui.theme.LocalColors
 import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
 
@@ -53,16 +63,26 @@ fun LauncherScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    var showSplash by rememberSaveable { mutableStateOf(true) }
+
     LaunchedEffect(resetCounter) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.background)
-    ) {
+    LaunchedEffect(uiState.isLoading) {
+        if (!uiState.isLoading) {
+            delay(1500) // Keep splash visible for a bit to allow GPU to settle
+            showSplash = false
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.background)
+        ) {
         Spacer(modifier = Modifier.height(8.dp))
 
         // ── "Not default launcher" warning banner ──────────────────────────
@@ -110,50 +130,7 @@ fun LauncherScreen(
             }
         }
 
-        // ── Notification Access warning banner ──────────────────────────
-        AnimatedVisibility(
-            visible = !uiState.isNotificationAccessGranted,
-            enter = expandVertically(tween(300)) + fadeIn(tween(300)),
-            exit = shrinkVertically(tween(200)) + fadeOut(tween(200))
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            listOf(
-                                Color(0xFFE53935).copy(alpha = 0.15f),
-                                Color(0xFFE53935).copy(alpha = 0.05f)
-                            )
-                        )
-                    )
-                    .clickable { viewModel.openNotificationSettings() }
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Notifications,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = Color(0xFFE53935)
-                )
-                Text(
-                    text = "Permiso de notificaciones necesario para los contadores.",
-                    fontSize = 12.sp,
-                    color = Color(0xFFE53935),
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    imageVector = Icons.Rounded.OpenInNew,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = Color(0xFFE53935).copy(alpha = 0.7f)
-                )
-            }
-        }
+
 
         // Profile header with gear icon for settings
         ProfileHeader(
@@ -174,6 +151,7 @@ fun LauncherScreen(
         ) {
             LauncherSettingsPanel(
                 isDarkTheme = uiState.isDarkTheme,
+                colorTheme = uiState.colorTheme,
                 showAppLabels = uiState.showAppLabels,
                 iconSize = uiState.iconSize,
                 showIconBackground = uiState.showIconBackground,
@@ -182,7 +160,13 @@ fun LauncherScreen(
                 installedIconPacks = uiState.installedIconPacks,
                 selectedIconPack = uiState.selectedIconPack,
                 isLoadingIconPacks = uiState.isLoadingIconPacks,
+                labsEnabled = uiState.labsEnabled,
+                aiProvider = uiState.aiProvider,
+                aiConnectionState = uiState.aiConnectionState,
+                aiModel = uiState.aiModel,
+                organizationState = uiState.organizationState,
                 onToggleTheme = { viewModel.toggleTheme() },
+                onColorThemeChange = { viewModel.setColorTheme(it) },
                 onToggleAppLabels = {
                     viewModel.setShowAppLabels(!uiState.showAppLabels)
                 },
@@ -194,6 +178,13 @@ fun LauncherScreen(
                 onCategoryToggleHidden = { viewModel.toggleCategoryHidden(it) },
                 onSelectIconPack = { viewModel.setIconPack(it) },
                 onReset = { viewModel.resetSettings() },
+                onToggleLabs = { viewModel.setLabsEnabled(it) },
+                onConnectAi = { provider, key -> viewModel.connectAiProvider(provider, key) },
+                onDisconnectAi = { viewModel.disconnectAiProvider() },
+                onSetAiModel = { viewModel.setAiModel(it) },
+                onOrganizeApps = { viewModel.organizeAppsWithAi() },
+                onApplySuggestions = { viewModel.applyAiSuggestions(it) },
+                onCancelOrganization = { viewModel.cancelAiOrganization() },
                 modifier = Modifier
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .heightIn(max = 420.dp)
@@ -255,6 +246,61 @@ fun LauncherScreen(
                 onUninstall = { viewModel.uninstallApp(it) },
                 modifier = Modifier.weight(1f)
             )
+        }
+    }
+    }
+
+    // ── Splash Screen Overlay ──────────────────────────────────────────────
+    AnimatedVisibility(
+        visible = showSplash,
+        enter = fadeIn(animationSpec = tween(500)),
+        exit = fadeOut(animationSpec = tween(1000))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.background)
+                .pointerInput(Unit) {
+                    // Intercept touch events while splash is visible
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(accent.primary, accent.primary.copy(alpha = 0.5f))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Android, // Placeholder logo
+                        contentDescription = "Launcher Logo",
+                        modifier = Modifier.size(72.dp),
+                        tint = colors.background
+                    )
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "TAPO Launcher",
+                    style = LauncherTypography.headlineMedium,
+                    color = colors.onBackground,
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Preparando interfaz...",
+                    style = LauncherTypography.bodyMedium,
+                    color = colors.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }

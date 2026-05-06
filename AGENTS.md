@@ -60,19 +60,4 @@ cd app
 
 When editing docs or CI, prefer aligning to the repo name (`TAPO-Launcher`) unless the user specifies otherwise.
 
----
 
-## ESTADO ACTUAL DE REFACTORIZACIÓN
-
-> **SECCIÓN TEMPORAL — ELIMINAR CUANDO TERMINE LA REFACTORIZACIÓN**
-
-**Fase actual:** Fase 2 — Refactorización Estructural (completada)
-
-**Próxima acción:** Comenzar Fase 3 — Calidad y Testing.
-
-**Contexto:** El proyecto acaba de recibir un informe técnico completo (`REPORT.md`) que identifica deuda técnica significativa. Se creó `REFACTOR_CHECKLIST.md` con 3 fases de trabajo. Todo agente que modifique código debe:
-
-1. Leer `REFACTOR_CHECKLIST.md` antes de empezar.
-2. No agregar nuevas features hasta terminar Fase 1.
-3. Priorizar los fixes listados en orden.
-4. Actualizar el checklist marcando tareas completadas.

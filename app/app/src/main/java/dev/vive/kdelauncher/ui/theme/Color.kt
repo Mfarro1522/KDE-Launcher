@@ -1,6 +1,7 @@
 package dev.vive.kdelauncher.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import dev.vive.kdelauncher.data.model.ColorTheme
 
 /**
  * Color palette for dark and light themes.
@@ -54,6 +55,7 @@ object LauncherColors {
  * Resolved colors based on current theme (dark/light).
  * Use this instead of accessing LauncherColors directly in components.
  */
+
 data class ResolvedColors(
     val background: Color,
     val surface: Color,
@@ -63,6 +65,7 @@ data class ResolvedColors(
     val onSurfaceVariant: Color,
     val border: Color,
     val isDark: Boolean,
+    val accent: Color = LauncherColors.AccentTeal,
 ) {
     val borderSubtle: Color get() = if (isDark) LauncherColors.White5 else LauncherColors.Black5
     val overlay: Color get() = if (isDark) LauncherColors.White5 else LauncherColors.Black5
@@ -88,5 +91,35 @@ data class ResolvedColors(
             border = LauncherColors.LightBorder,
             isDark = false,
         )
+
+        fun resolveFromTheme(theme: ColorTheme, isDark: Boolean): ResolvedColors {
+            if (theme == ColorTheme.SYSTEM) {
+                return if (isDark) Dark else Light
+            }
+
+            val background = Color(theme.backgroundArgb(isDark))
+            val surface = Color(theme.surfaceArgb(isDark))
+            val onBackground = Color(theme.onBackgroundArgb(isDark))
+            val accent = Color(theme.accentArgb(isDark))
+            val surfaceVariant = if (isDark) {
+                surface.copy(alpha = 0.92f)
+            } else {
+                surface.copy(alpha = 0.97f)
+            }
+            val onSurfaceVariant = onBackground.copy(alpha = if (isDark) 0.72f else 0.66f)
+            val border = onBackground.copy(alpha = if (isDark) 0.12f else 0.14f)
+
+            return ResolvedColors(
+                background = background,
+                surface = surface,
+                surfaceVariant = surfaceVariant,
+                onBackground = onBackground,
+                onSurface = onBackground,
+                onSurfaceVariant = onSurfaceVariant,
+                border = border,
+                isDark = isDark,
+                accent = accent
+            )
+        }
     }
 }

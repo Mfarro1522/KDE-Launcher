@@ -5,6 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import dev.vive.kdelauncher.data.model.ColorTheme
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import dev.vive.kdelauncher.data.model.Profile
@@ -48,40 +49,48 @@ fun accentFromProfile(profile: Profile): LauncherAccent {
 fun KDELauncherTheme(
     profile: Profile = Profile.Personal,
     isDarkTheme: Boolean = true,
+    colorTheme: ColorTheme = ColorTheme.SYSTEM,
     content: @Composable () -> Unit
 ) {
-    val accent = accentFromProfile(profile)
-    val resolvedColors = if (isDarkTheme) ResolvedColors.Dark else ResolvedColors.Light
+    val resolvedColors = ResolvedColors.resolveFromTheme(colorTheme, isDarkTheme)
+    
+    val baseAccent = accentFromProfile(profile)
+    val accent = if (colorTheme == ColorTheme.SYSTEM) baseAccent else LauncherAccent(
+        primary = resolvedColors.accent,
+        primaryDark = resolvedColors.accent.copy(alpha = 0.8f),
+        primaryBg = resolvedColors.accent.copy(alpha = 0.15f),
+        primaryBgLight = resolvedColors.accent.copy(alpha = 0.1f),
+    )
 
     val colorScheme = if (isDarkTheme) {
         darkColorScheme(
             primary = accent.primary,
-            onPrimary = LauncherColors.DarkBackground,
-            secondary = LauncherColors.DarkSurfaceVariant,
-            onSecondary = LauncherColors.DarkOnSurface,
+            onPrimary = resolvedColors.background,
+            secondary = resolvedColors.surfaceVariant,
+            onSecondary = resolvedColors.onSurface,
             tertiary = accent.primaryDark,
-            background = LauncherColors.DarkBackground,
-            onBackground = LauncherColors.DarkOnBackground,
-            surface = LauncherColors.DarkSurface,
-            onSurface = LauncherColors.DarkOnSurface,
-            surfaceVariant = LauncherColors.DarkSurfaceVariant,
-            onSurfaceVariant = LauncherColors.DarkOnSurfaceVariant,
-            outline = LauncherColors.DarkBorder,
+            background = resolvedColors.background,
+            onBackground = resolvedColors.onBackground,
+            surface = resolvedColors.surface,
+            onSurface = resolvedColors.onSurface,
+            surfaceVariant = resolvedColors.surfaceVariant,
+            onSurfaceVariant = resolvedColors.onSurfaceVariant,
+            outline = resolvedColors.border,
         )
     } else {
         lightColorScheme(
             primary = accent.primary,
-            onPrimary = LauncherColors.LightBackground,
-            secondary = LauncherColors.LightSurfaceVariant,
-            onSecondary = LauncherColors.LightOnSurface,
+            onPrimary = resolvedColors.background,
+            secondary = resolvedColors.surfaceVariant,
+            onSecondary = resolvedColors.onSurface,
             tertiary = accent.primaryDark,
-            background = LauncherColors.LightBackground,
-            onBackground = LauncherColors.LightOnBackground,
-            surface = LauncherColors.LightSurface,
-            onSurface = LauncherColors.LightOnSurface,
-            surfaceVariant = LauncherColors.LightSurfaceVariant,
-            onSurfaceVariant = LauncherColors.LightOnSurfaceVariant,
-            outline = LauncherColors.LightBorder,
+            background = resolvedColors.background,
+            onBackground = resolvedColors.onBackground,
+            surface = resolvedColors.surface,
+            onSurface = resolvedColors.onSurface,
+            surfaceVariant = resolvedColors.surfaceVariant,
+            onSurfaceVariant = resolvedColors.onSurfaceVariant,
+            outline = resolvedColors.border,
         )
     }
 

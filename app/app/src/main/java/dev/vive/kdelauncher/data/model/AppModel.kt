@@ -2,21 +2,31 @@ package dev.vive.kdelauncher.data.model
 
 import android.graphics.Bitmap
 import android.os.UserHandle
+import androidx.compose.runtime.Immutable
+
+/**
+ * Immutable wrapper for Bitmap so Compose treats it as stable.
+ * Without this, Compose assumes Bitmap is mutable and recomposes
+ * every AppIcon on every state change.
+ */
+@Immutable
+data class AppIconBitmap(val bitmap: Bitmap) {
+    override fun equals(other: Any?): Boolean = this === other
+    override fun hashCode(): Int = System.identityHashCode(bitmap)
+}
 
 /**
  * Represents a single launchable application on the device.
- * Uses Bitmap instead of Drawable to avoid repeated toBitmap() conversions.
  */
 data class AppModel(
     val packageName: String,
     val activityName: String,
     val label: String,
-    val iconBitmap: Bitmap?,
+    val icon: AppIconBitmap? = null,
     val category: AppCategory = AppCategory.ALL,
     val isFavorite: Boolean = false,
     val profileTag: ProfileType = ProfileType.PERSONAL,
-    val userHandle: UserHandle? = null,
-    val notificationCount: Int = 0
+    val userHandle: UserHandle? = null
 )
 
 /**
@@ -41,92 +51,111 @@ enum class AppCategory(val displayName: String) {
  */
 object AppCategorizer {
 
-    private val packagePatterns = mapOf(
+    private data class CategoryRule(
+        val pattern: String,
+        val category: AppCategory,
+        val baseScore: Int = 10
+    )
+
+    private val exactPackageCategories = mapOf(
+        "com.android.vending" to AppCategory.INTERNET,
+        "com.facebook.pages.app" to AppCategory.INTERNET,
+        "com.google.android.apps.photos" to AppCategory.GRAPHICS,
+        "com.google.android.youtube" to AppCategory.MULTIMEDIA,
+        "com.google.android.play.games" to AppCategory.GAMES
+    )
+
+    private val categoryRules = listOf(
         // Development
-        "termux" to AppCategory.DEVELOPMENT,
-        "terminal" to AppCategory.DEVELOPMENT,
-        "com.termux" to AppCategory.DEVELOPMENT,
-        "editor" to AppCategory.DEVELOPMENT,
-        "ide" to AppCategory.DEVELOPMENT,
-        "code" to AppCategory.DEVELOPMENT,
-        "github" to AppCategory.DEVELOPMENT,
-        "gitlab" to AppCategory.DEVELOPMENT,
-        "docker" to AppCategory.DEVELOPMENT,
-        "database" to AppCategory.DEVELOPMENT,
-        "sql" to AppCategory.DEVELOPMENT,
-        "dev" to AppCategory.DEVELOPMENT,
+        CategoryRule("termux", AppCategory.DEVELOPMENT, baseScore = 20),
+        CategoryRule("terminal", AppCategory.DEVELOPMENT),
+        CategoryRule("editor", AppCategory.DEVELOPMENT),
+        CategoryRule("ide", AppCategory.DEVELOPMENT),
+        CategoryRule("code", AppCategory.DEVELOPMENT),
+        CategoryRule("github", AppCategory.DEVELOPMENT),
+        CategoryRule("gitlab", AppCategory.DEVELOPMENT),
+        CategoryRule("docker", AppCategory.DEVELOPMENT),
+        CategoryRule("database", AppCategory.DEVELOPMENT),
+        CategoryRule("sql", AppCategory.DEVELOPMENT),
+        CategoryRule("dev", AppCategory.DEVELOPMENT, baseScore = 6),
 
         // Graphics
-        "gallery" to AppCategory.GRAPHICS,
-        "photo" to AppCategory.GRAPHICS,
-        "camera" to AppCategory.GRAPHICS,
-        "draw" to AppCategory.GRAPHICS,
-        "paint" to AppCategory.GRAPHICS,
-        "image" to AppCategory.GRAPHICS,
-        "sketch" to AppCategory.GRAPHICS,
-        "canva" to AppCategory.GRAPHICS,
-        "snapseed" to AppCategory.GRAPHICS,
+        CategoryRule("gallery", AppCategory.GRAPHICS),
+        CategoryRule("photo", AppCategory.GRAPHICS),
+        CategoryRule("photos", AppCategory.GRAPHICS, baseScore = 14),
+        CategoryRule("camera", AppCategory.GRAPHICS),
+        CategoryRule("draw", AppCategory.GRAPHICS),
+        CategoryRule("paint", AppCategory.GRAPHICS),
+        CategoryRule("image", AppCategory.GRAPHICS),
+        CategoryRule("sketch", AppCategory.GRAPHICS),
+        CategoryRule("canva", AppCategory.GRAPHICS),
+        CategoryRule("snapseed", AppCategory.GRAPHICS, baseScore = 16),
 
         // Internet
-        "browser" to AppCategory.INTERNET,
-        "chrome" to AppCategory.INTERNET,
-        "firefox" to AppCategory.INTERNET,
-        "brave" to AppCategory.INTERNET,
-        "mail" to AppCategory.INTERNET,
-        "email" to AppCategory.INTERNET,
-        "gmail" to AppCategory.INTERNET,
-        "slack" to AppCategory.INTERNET,
-        "telegram" to AppCategory.INTERNET,
-        "whatsapp" to AppCategory.INTERNET,
-        "discord" to AppCategory.INTERNET,
-        "twitter" to AppCategory.INTERNET,
-        "reddit" to AppCategory.INTERNET,
-        "instagram" to AppCategory.INTERNET,
-        "messenger" to AppCategory.INTERNET,
-        "signal" to AppCategory.INTERNET,
+        CategoryRule("browser", AppCategory.INTERNET),
+        CategoryRule("chrome", AppCategory.INTERNET),
+        CategoryRule("firefox", AppCategory.INTERNET),
+        CategoryRule("brave", AppCategory.INTERNET),
+        CategoryRule("mail", AppCategory.INTERNET),
+        CategoryRule("email", AppCategory.INTERNET),
+        CategoryRule("gmail", AppCategory.INTERNET),
+        CategoryRule("slack", AppCategory.INTERNET),
+        CategoryRule("telegram", AppCategory.INTERNET),
+        CategoryRule("whatsapp", AppCategory.INTERNET),
+        CategoryRule("discord", AppCategory.INTERNET),
+        CategoryRule("twitter", AppCategory.INTERNET),
+        CategoryRule("reddit", AppCategory.INTERNET),
+        CategoryRule("instagram", AppCategory.INTERNET),
+        CategoryRule("messenger", AppCategory.INTERNET),
+        CategoryRule("signal", AppCategory.INTERNET),
+        CategoryRule("facebook", AppCategory.INTERNET),
+        CategoryRule("pages", AppCategory.INTERNET),
+        CategoryRule("store", AppCategory.INTERNET),
+        CategoryRule("vending", AppCategory.INTERNET, baseScore = 14),
 
         // Games
-        "game" to AppCategory.GAMES,
-        "play" to AppCategory.GAMES,
+        CategoryRule("game", AppCategory.GAMES, baseScore = 14),
+        CategoryRule("games", AppCategory.GAMES, baseScore = 16),
+        CategoryRule("play", AppCategory.GAMES, baseScore = 5),
 
         // Multimedia
-        "music" to AppCategory.MULTIMEDIA,
-        "spotify" to AppCategory.MULTIMEDIA,
-        "video" to AppCategory.MULTIMEDIA,
-        "youtube" to AppCategory.MULTIMEDIA,
-        "vlc" to AppCategory.MULTIMEDIA,
-        "podcast" to AppCategory.MULTIMEDIA,
-        "player" to AppCategory.MULTIMEDIA,
-        "audio" to AppCategory.MULTIMEDIA,
-        "netflix" to AppCategory.MULTIMEDIA,
-        "tiktok" to AppCategory.MULTIMEDIA,
+        CategoryRule("music", AppCategory.MULTIMEDIA, baseScore = 14),
+        CategoryRule("spotify", AppCategory.MULTIMEDIA, baseScore = 16),
+        CategoryRule("video", AppCategory.MULTIMEDIA, baseScore = 14),
+        CategoryRule("youtube", AppCategory.MULTIMEDIA, baseScore = 16),
+        CategoryRule("vlc", AppCategory.MULTIMEDIA, baseScore = 16),
+        CategoryRule("podcast", AppCategory.MULTIMEDIA, baseScore = 14),
+        CategoryRule("player", AppCategory.MULTIMEDIA, baseScore = 16),
+        CategoryRule("audio", AppCategory.MULTIMEDIA, baseScore = 14),
+        CategoryRule("netflix", AppCategory.MULTIMEDIA, baseScore = 16),
+        CategoryRule("tiktok", AppCategory.MULTIMEDIA, baseScore = 14),
 
         // System
-        "settings" to AppCategory.SYSTEM,
-        "monitor" to AppCategory.SYSTEM,
-        "filemanager" to AppCategory.SYSTEM,
-        "files" to AppCategory.SYSTEM,
-        "manager" to AppCategory.SYSTEM,
-        "updater" to AppCategory.SYSTEM,
+        CategoryRule("settings", AppCategory.SYSTEM, baseScore = 18),
+        CategoryRule("monitor", AppCategory.SYSTEM),
+        CategoryRule("filemanager", AppCategory.SYSTEM),
+        CategoryRule("files", AppCategory.SYSTEM),
+        CategoryRule("manager", AppCategory.SYSTEM, baseScore = 8),
+        CategoryRule("updater", AppCategory.SYSTEM),
 
         // Utilities
-        "calculator" to AppCategory.UTILITIES,
-        "calc" to AppCategory.UTILITIES,
-        "clock" to AppCategory.UTILITIES,
-        "alarm" to AppCategory.UTILITIES,
-        "calendar" to AppCategory.UTILITIES,
-        "notes" to AppCategory.UTILITIES,
-        "weather" to AppCategory.UTILITIES,
-        "maps" to AppCategory.UTILITIES,
-        "translate" to AppCategory.UTILITIES,
-        "compass" to AppCategory.UTILITIES,
-        "flashlight" to AppCategory.UTILITIES,
-        "recorder" to AppCategory.UTILITIES,
-        "contacts" to AppCategory.UTILITIES,
-        "phone" to AppCategory.UTILITIES,
-        "dialer" to AppCategory.UTILITIES,
-        "messages" to AppCategory.UTILITIES,
-        "sms" to AppCategory.UTILITIES,
+        CategoryRule("calculator", AppCategory.UTILITIES, baseScore = 14),
+        CategoryRule("calc", AppCategory.UTILITIES),
+        CategoryRule("clock", AppCategory.UTILITIES),
+        CategoryRule("alarm", AppCategory.UTILITIES),
+        CategoryRule("calendar", AppCategory.UTILITIES),
+        CategoryRule("notes", AppCategory.UTILITIES),
+        CategoryRule("weather", AppCategory.UTILITIES),
+        CategoryRule("maps", AppCategory.UTILITIES, baseScore = 14),
+        CategoryRule("translate", AppCategory.UTILITIES),
+        CategoryRule("compass", AppCategory.UTILITIES),
+        CategoryRule("flashlight", AppCategory.UTILITIES),
+        CategoryRule("recorder", AppCategory.UTILITIES),
+        CategoryRule("contacts", AppCategory.UTILITIES),
+        CategoryRule("phone", AppCategory.UTILITIES),
+        CategoryRule("dialer", AppCategory.UTILITIES),
+        CategoryRule("messages", AppCategory.UTILITIES),
+        CategoryRule("sms", AppCategory.UTILITIES),
     )
 
     /**
@@ -134,12 +163,18 @@ object AppCategorizer {
      */
     fun categorize(packageName: String, androidCategory: Int): AppCategory {
         val lowerPkg = packageName.lowercase()
+        exactPackageCategories[lowerPkg]?.let { return it }
 
-        // Check package name patterns
-        for ((pattern, category) in packagePatterns) {
-            if (lowerPkg.contains(pattern)) {
-                return category
+        val bestMatch = categoryRules
+            .mapNotNull { rule ->
+                scoreRule(lowerPkg, rule)?.let { rule.category to it }
             }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, scores) -> scores.maxOrNull() ?: 0 }
+            .maxByOrNull { it.value }
+
+        if (bestMatch != null && bestMatch.value > 0) {
+            return bestMatch.key
         }
 
         // Fall back to Android's built-in category
@@ -154,5 +189,17 @@ object AppCategorizer {
             android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> AppCategory.UTILITIES
             else -> AppCategory.ALL
         }
+    }
+
+    private fun scoreRule(packageName: String, rule: CategoryRule): Int? {
+        if (!packageName.contains(rule.pattern)) return null
+
+        val exactTokenMatch = packageName
+            .split('.', '_', '-', '/')
+            .any { token -> token == rule.pattern }
+
+        val exactTokenBonus = if (exactTokenMatch) 20 else 0
+        val substringBonus = rule.pattern.length
+        return rule.baseScore + exactTokenBonus + substringBonus
     }
 }

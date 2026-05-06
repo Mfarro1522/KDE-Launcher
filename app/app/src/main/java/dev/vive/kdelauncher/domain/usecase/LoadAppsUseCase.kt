@@ -2,6 +2,7 @@ package dev.vive.kdelauncher.domain.usecase
 
 import android.app.Application
 import android.content.Intent
+import dev.vive.kdelauncher.data.model.AppIconBitmap
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.domain.repository.AppRepository
 import dev.vive.kdelauncher.domain.repository.WorkProfileManager
@@ -29,7 +30,7 @@ class LoadAppsUseCase(
                         packageName = app.packageName,
                         activityName = app.activityName,
                         label = app.label,
-                        iconBitmap = null,
+                        icon = app.icon,
                         category = dev.vive.kdelauncher.data.model.AppCategorizer.categorize(
                             app.packageName, app.androidCategory
                         ),
@@ -74,7 +75,7 @@ class LoadAppsUseCase(
             val fullApps = metadataApps.map { app ->
                 val key = iconKey(app)
                 val bitmap = iconsByKey[key]
-                if (bitmap != null) app.copy(iconBitmap = bitmap) else app
+                if (bitmap != null) app.copy(icon = AppIconBitmap(bitmap)) else app
             }
 
             metadataApps to fullApps
