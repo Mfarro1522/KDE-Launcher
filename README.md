@@ -2,7 +2,7 @@
 
 ![Demo](pics/AppEnUso.gif)
 
-Un launcher para Android con el estilo visual del menú de aplicaciones de **KDE Plasma**. Ligero, minimalista y altamente configurable.
+Launcher para Android hecho con **Kotlin + Jetpack Compose**. Busca ser ligero, minimalista y práctico para uso diario, con soporte para categorías, perfiles de trabajo, icon packs y ajustes visuales.
 
 <p align="center">
   <img src="pics/ScreenApp1_whiteTheme.png" width="200" alt="Pantalla principal - Tema claro" />
@@ -12,63 +12,53 @@ Un launcher para Android con el estilo visual del menú de aplicaciones de **KDE
 
 ## Características
 
-- **Categorías estilo KDE** — Favoritos, Desarrollo, Gráficos, Internet, Juegos, Multimedia, Sistema y Utilidades.
-- **Perfiles Personal/Trabajo** — Alterna entre perfiles con acentos teal/naranja. Soporte para Android Work Profile real.
+- **Categorías configurables** — Favoritos, Desarrollo, Gráficos, Internet, Juegos, Multimedia, Sistema y Utilidades.
+- **Perfiles Personal / Trabajo** — Detecta un Work Profile real y permite lanzar apps del perfil laboral.
 - **Búsqueda instantánea** — Filtra apps por nombre o paquete.
-- **Panel de ajustes** — Tema oscuro/claro, tamaño de íconos, columnas de cuadrícula, fondo de íconos y etiquetas.
-- **Icon packs** — Detecta packs instalados (ADW, Nova, TeslaCoil, Atom) y aplica sus íconos automáticamente.
-- **Personalización de categorías** — Renombra, cambia íconos y oculta categorías.
-- **Carga en dos fases** — La UI se muestra al instante con metadatos; los íconos se cargan en segundo plano.
+- **Ajustes de interfaz** — Tema claro/oscuro, tamaño de íconos, columnas, fondo de íconos y etiquetas.
+- **Icon packs** — Detecta packs instalados y resuelve íconos desde su `appfilter.xml`.
+- **Personalización de categorías** — Cambia nombre, ícono y visibilidad de cada categoría.
+- **Carga en dos fases** — Primero muestra metadatos y luego carga íconos en segundo plano.
+- **Notificaciones** — Incluye un `NotificationListenerService` para mostrar estado relacionado con notificaciones.
 
 ## Arquitectura
 
 ```
 app/
 ├── app/src/main/java/dev/vive/kdelauncher/
-│   ├── MainActivity.kt          ← Entry point. Inyecta ViewModel, maneja lifecycle.
-│   ├── KDELauncherApp.kt        ← Application class.
-│   ├── SetDefaultLauncherActivity.kt ← Trampolín para abrir ajustes de launcher predeterminado.
+│   ├── TAPOLauncherApp.kt        ← `Application` y contenedor principal.
+│   ├── AppContainer.kt           ← Inyección manual de dependencias.
+│   ├── MainActivity.kt           ← Punto de entrada de la UI.
+│   ├── SetDefaultLauncherActivity.kt ← Pantalla puente para fijar el launcher predeterminado.
 │   ├── data/
-│   │   ├── model/
-│   │   │   ├── AppModel.kt      ← Modelo de app + AppCategory + AppCategorizer.
-│   │   │   └── Profile.kt       ← Perfil (Personal/Work) con colores de acento.
-│   │   ├── repository/
-│   │   │   └── AppRepository.kt ← Consulta PackageManager, cachea íconos (LruCache).
-│   │   ├── IconPackManager.kt   ← Detecta y resuelve icon packs vía appfilter.xml.
-│   │   ├── ProfileManager.kt    ← Persiste favoritos y apps de trabajo en SharedPreferences.
-│   │   ├── SettingsManager.kt   ← Persiste toda la configuración del launcher.
-│   │   └── WorkProfileManager.kt← Detecta Android Work Profile y lanza apps cross-user.
+│   │   ├── repository/           ← Repositorios e implementaciones de datos.
+│   │   ├── model/                ← Modelos de apps, perfiles y categorías.
+│   │   ├── usecase/              ← Lógica principal extraída del ViewModel.
+│   │   ├── IconPackManager.kt    ← Resolución de icon packs.
+│   │   ├── ProfileManager.kt     ← Favoritos y apps de trabajo.
+│   │   ├── SettingsManager.kt    ← Configuración persistida con DataStore.
+│   │   ├── WorkProfileManager.kt ← Apps del perfil laboral.
+│   │   └── NotificationTracker.kt← Estado de notificaciones.
 │   └── ui/
-│       ├── LauncherViewModel.kt ← StateFlow reactivo, combine de 7 flujos → LauncherUiState.
-│       ├── screens/
-│       │   └── LauncherScreen.kt← Layout principal (banner → header → settings → search → grid).
-│       ├── components/
-│       │   ├── AppGrid.kt       ← LazyVerticalGrid con íconos.
-│       │   ├── AppIcon.kt       ← Ícono individual con menú contextual.
-│       │   ├── CategorySidebar.kt ← Barra lateral de categorías animada.
-│       │   ├── SearchBar.kt     ← Campo de búsqueda con estilo KDE.
-│       │   ├── ProfileHeader.kt ← Avatar + selector de perfil + botón de ajustes.
-│       │   ├── LauncherSettingsPanel.kt ← Panel colapsable con todas las opciones.
-│       │   └── IconResolver.kt  ← Mapea strings de íconos a ImageVector.
-│       └── theme/
-│           ├── Color.kt         ← Paletas dark/light + colores de acento.
-│           ├── Theme.kt         ← MaterialTheme + CompositionLocals (accent, colors).
-│           └── Type.kt          ← Escala tipográfica con mono y sans-serif.
+│       ├── LauncherViewModel.kt  ← Estado reactivo de la pantalla principal.
+│       ├── screens/              ← Pantalla principal del launcher.
+│       ├── components/           ← Grid, sidebar, buscador, header y panel de ajustes.
+│       └── theme/                ← Colores, tipografía y tema Material3.
 ```
 
 ### Flujo de datos
 
-1. **MainActivity** crea `LauncherViewModel` y recolecta `uiState` (StateFlow).
-2. **loadApps()** — Fase 1: consulta `AppRepository.getInstalledAppsMetadata()` → emite la lista sin íconos. Fase 2: carga todos los bitmaps en paralelo con async/awaitAll → emite la lista completa.
-3. **combine** une 7 flujos (_allApps, search, category, profile, settings, iconPack, status) en un solo `LauncherUiState` reactivo.
-4. La UI (composables) consume `LauncherUiState` y delega acciones al ViewModel, que persiste cambios y actualiza los MutableStateFlow correspondientes.
+1. **MainActivity** obtiene el `LauncherViewModel` desde el contenedor de la app y observa su estado.
+2. El ViewModel delega en los **use cases** para cargar apps, lanzar actividades, marcar favoritos y leer estado del sistema.
+3. La carga de apps ocurre en **dos fases**: primero llegan metadatos para pintar la UI rápido y después se resuelven los íconos.
+4. Los cambios de configuración se guardan en **DataStore** y se reflejan en la interfaz con `StateFlow`.
 
 ### Optimizaciones de rendimiento
 
-- **Carga en dos fases**: La UI es usable en ~50ms con nombres y categorías; los íconos se cargan asíncronamente.
-- **LruCache**: Los bitmaps decodificados se cachean en memoria (25% del heap, máximo 32 MB).
-- **Icon packs**: El appfilter.xml se parsea una sola vez y se cachea por pack.
-- **Compose StateFlow**: Las recomposiciones son mínimas gracias a la combinación eficiente de flujos.
+- **Carga en dos fases**: La interfaz aparece rápido y los íconos se completan después.
+- **Caché en memoria**: Los íconos decodificados se guardan para evitar trabajo repetido.
+- **Icon packs**: Cada `appfilter.xml` se parsea una sola vez y se reutiliza.
+- **StateFlow**: El estado de la UI se mantiene reactivo sin lógica extra en la vista.
 
 ## Tech stack
 
@@ -76,15 +66,23 @@ app/
 |------|-----------|
 | Lenguaje | **Kotlin** 100% |
 | UI | **Jetpack Compose** + Material3 |
-| Arquitectura | **MVVM** con **AndroidViewModel** + **StateFlow** |
+| Arquitectura | **MVVM** + **use cases** + contenedor manual de dependencias |
 | Gradle | **Kotlin DSL** + Version Catalog (`libs.versions.toml`) |
 | Mínimo SDK | **API 26** (Android 8.0) |
 | Target SDK | **API 35** (Android 15) |
-| Compilación | Java 17, Compose BOM 2024 |
+| Compilación | Java 17, Compose BOM |
+
+## Estado actual
+
+- La **Fase 2 de refactorización** ya está completada.
+- La app todavía está en **Fase 3: calidad y testing**.
+- El proyecto usa un **launcher real** con soporte para Work Profile, icon packs, ajustes visuales y notificaciones.
 
 ## Build
 
 ```bash
+cd app
+
 # Debug APK
 ./gradlew assembleDebug
 
@@ -95,7 +93,7 @@ app/
 ./build-release.sh
 ```
 
-El APK generado estará en `app/app/build/outputs/apk/debug/` o en `releases/`.
+El APK generado estará en `app/app/build/outputs/apk/debug/` o `app/app/build/outputs/apk/release/`. El script `build-release.sh` copia el release final a `releases/`.
 
 ## Licencia
 
