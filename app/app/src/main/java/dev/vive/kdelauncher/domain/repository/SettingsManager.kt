@@ -51,5 +51,8 @@ interface SettingsManager {
     val aiModel: Flow<String>
     suspend fun setAiModel(model: String)
 
+    val productTourCompleted: Flow<Boolean>
+    suspend fun setProductTourCompleted(completed: Boolean)
+
     suspend fun resetAll()
 }

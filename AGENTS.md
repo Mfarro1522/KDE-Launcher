@@ -2,7 +2,7 @@
 
 > Android launcher app built with Kotlin + Jetpack Compose. Single module, no tests.
 >
-> **Antes de modificar código, lee `REFACTOR_CHECKLIST.md`** para saber en qué fase de refactorización se encuentra el proyecto y qué tareas están pendientes o en progreso.
+> **Antes de hacer cambios lee PRODUCT_TOUR_PLAN.md**- es la implementacion mas actual y esta en progreso leela para entender el estado actual del proyecto y las tareas pendientes.
 
 ## Project structure
 

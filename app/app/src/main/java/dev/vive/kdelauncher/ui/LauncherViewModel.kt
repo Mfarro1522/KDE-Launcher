@@ -24,6 +24,10 @@ import dev.vive.kdelauncher.domain.usecase.SetCategoryOverrideUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleFavoriteUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleWorkAppUseCase
 import dev.vive.kdelauncher.domain.usecase.UninstallAppUseCase
+import dev.vive.kdelauncher.domain.usecase.CheckProductTourStatusUseCase
+import dev.vive.kdelauncher.domain.usecase.DismissProductTourUseCase
+import dev.vive.kdelauncher.ui.tour.TourState
+import dev.vive.kdelauncher.ui.tour.TourStep
 import dev.vive.kdelauncher.service.PackageChangeReceiver
 import dev.vive.kdelauncher.ui.components.CategoryConfig
 import dev.vive.kdelauncher.ui.components.IconSize
@@ -82,6 +86,7 @@ data class LauncherUiState(
     val aiConnectionState: AiConnectionState = AiConnectionState.Idle,
     val aiModel: String = "",
     val organizationState: OrganizationState = OrganizationState.Idle,
+    val tourState: TourState = TourState()
 )
 
 class LauncherViewModel(
@@ -102,6 +107,8 @@ class LauncherViewModel(
     private val uninstallAppUseCase: UninstallAppUseCase,
     private val connectAiProviderUseCase: dev.vive.kdelauncher.domain.usecase.ConnectAiProviderUseCase,
     private val organizeAppsWithAiUseCase: dev.vive.kdelauncher.domain.usecase.OrganizeAppsWithAiUseCase,
+    private val checkProductTourStatusUseCase: CheckProductTourStatusUseCase,
+    private val dismissProductTourUseCase: DismissProductTourUseCase,
 ) : AndroidViewModel(application) {
 
     // ── UI-controlled state ──────────────────────────────────────────────────
@@ -116,6 +123,7 @@ class LauncherViewModel(
 
     private val _aiConnectionState = MutableStateFlow<AiConnectionState>(AiConnectionState.Idle)
     private val _organizationState = MutableStateFlow<OrganizationState>(OrganizationState.Idle)
+    private val _tourState = MutableStateFlow(TourState())
 
     // ── System status ────────────────────────────────────────────────────────
     private val _isDefaultLauncher = MutableStateFlow(true)
@@ -263,8 +271,8 @@ class LauncherViewModel(
             )
         )
 
-    val uiState: StateFlow<LauncherUiState> = combine(uiInput, appContentState) { input, appContent ->
-        LauncherUiStateMapper.map(input, appContent)
+    val uiState: StateFlow<LauncherUiState> = combine(uiInput, appContentState, _tourState) { input, appContent, tour ->
+        LauncherUiStateMapper.map(input, appContent, tour)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -279,6 +287,14 @@ class LauncherViewModel(
             refreshIconPacks()
             packageChangeReceiver.register(getApplication())
             refreshSystemStatus()
+
+            viewModelScope.launch {
+                _isLoading.first { !it }
+                val isCompleted = checkProductTourStatusUseCase().first()
+                if (!isCompleted) {
+                    startProductTour()
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -565,6 +581,56 @@ class LauncherViewModel(
         _organizationState.value = OrganizationState.Idle
     }
 
+    // ── Product Tour ─────────────────────────────────────────────────────────
+
+    fun startProductTour() {
+        _tourState.value = TourState(
+            isActive = true,
+            currentStepIndex = 0,
+            steps = buildTourSteps()
+        )
+    }
+
+    private fun buildTourSteps(): List<TourStep> {
+        val baseSteps = TourStep.entries.filter { it != TourStep.LABS }.toMutableList()
+        if (uiState.value.labsEnabled) {
+            val finishIndex = baseSteps.indexOf(TourStep.FINISH)
+            if (finishIndex != -1) {
+                baseSteps.add(finishIndex, TourStep.LABS)
+            } else {
+                baseSteps.add(TourStep.LABS)
+            }
+        }
+        return baseSteps
+    }
+
+    fun nextTourStep() {
+        val current = _tourState.value
+        if (current.currentStepIndex < current.steps.lastIndex) {
+            _tourState.value = current.copy(currentStepIndex = current.currentStepIndex + 1)
+        } else {
+            dismissProductTour()
+        }
+    }
+
+    fun previousTourStep() {
+        val current = _tourState.value
+        if (current.currentStepIndex > 0) {
+            _tourState.value = current.copy(currentStepIndex = current.currentStepIndex - 1)
+        }
+    }
+
+    fun skipProductTour() {
+        dismissProductTour()
+    }
+
+    fun dismissProductTour() {
+        viewModelScope.launch {
+            _tourState.value = _tourState.value.copy(isActive = false)
+            dismissProductTourUseCase()
+        }
+    }
+
     // ── Factory ──────────────────────────────────────────────────────────────
 
     class Factory(
@@ -591,6 +657,8 @@ class LauncherViewModel(
                 uninstallAppUseCase = container.uninstallAppUseCase,
                 connectAiProviderUseCase = container.connectAiProviderUseCase,
                 organizeAppsWithAiUseCase = container.organizeAppsWithAiUseCase,
+                checkProductTourStatusUseCase = container.checkProductTourStatusUseCase,
+                dismissProductTourUseCase = container.dismissProductTourUseCase,
             ) as T
         }
     }

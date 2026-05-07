@@ -30,6 +30,7 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         val AI_PROVIDER = stringPreferencesKey("ai_provider")
         val AI_API_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
+        val PRODUCT_TOUR_COMPLETED = booleanPreferencesKey("product_tour_completed")
 
         fun categoryNameKey(category: AppCategory) =
             stringPreferencesKey("cat_name_${category.name}")
@@ -205,6 +206,15 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
 
     override suspend fun setAiModel(model: String) {
         context.dataStore.edit { it[Keys.AI_MODEL] = model }
+    }
+
+    // --- Product Tour ---
+
+    override val productTourCompleted: Flow<Boolean> = context.dataStore.data
+        .map { it[Keys.PRODUCT_TOUR_COMPLETED] ?: false }
+
+    override suspend fun setProductTourCompleted(completed: Boolean) {
+        context.dataStore.edit { it[Keys.PRODUCT_TOUR_COMPLETED] = completed }
     }
 
     // --- Reset ---

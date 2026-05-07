@@ -45,6 +45,10 @@ import dev.vive.kdelauncher.ui.components.*
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
 import dev.vive.kdelauncher.ui.theme.LocalColors
 import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
+import androidx.compose.ui.zIndex
+import dev.vive.kdelauncher.ui.tour.ProductTourOverlay
+import dev.vive.kdelauncher.ui.tour.TourTarget
+import dev.vive.kdelauncher.ui.tour.tourTarget
 
 /**
  * Main launcher screen:
@@ -57,6 +61,8 @@ fun LauncherScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val tourState = uiState.tourState
+    val targetPositions = remember { androidx.compose.runtime.mutableStateMapOf<TourTarget, androidx.compose.ui.geometry.Rect>() }
     val resetCounter by viewModel.homeResetCounter.collectAsState()
     val colors = LocalColors.current
     val accent = LocalLauncherAccent.current
@@ -93,6 +99,7 @@ fun LauncherScreen(
         ) {
             Row(
                 modifier = Modifier
+                    .tourTarget(TourTarget.Banner, tourState) { t, r -> targetPositions[t] = r }
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
@@ -140,7 +147,10 @@ fun LauncherScreen(
             showSettingsActive = uiState.showSettings,
             hasRealWorkProfile = uiState.hasRealWorkProfile,
             isWorkProfileLocked = uiState.isWorkProfileLocked,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            modifier = Modifier
+                .tourTarget(TourTarget.ProfileHeader, tourState) { t, r -> targetPositions[t] = r }
+                .tourTarget(TourTarget.SettingsButton, tourState) { t, r -> targetPositions[t] = r }
+                .padding(top = 4.dp, bottom = 8.dp)
         )
 
         // Settings panel (collapsible, max 60% screen height)
@@ -185,7 +195,14 @@ fun LauncherScreen(
                 onOrganizeApps = { viewModel.organizeAppsWithAi() },
                 onApplySuggestions = { viewModel.applyAiSuggestions(it) },
                 onCancelOrganization = { viewModel.cancelAiOrganization() },
+                onResetTour = {
+                    if (uiState.showSettings) {
+                        viewModel.toggleSettings()
+                    }
+                    viewModel.startProductTour()
+                },
                 modifier = Modifier
+                    .tourTarget(TourTarget.Labs, tourState) { t, r -> targetPositions[t] = r }
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .heightIn(max = 420.dp)
             )
@@ -195,7 +212,9 @@ fun LauncherScreen(
         SearchBar(
             query = uiState.searchQuery,
             onQueryChange = { viewModel.setSearchQuery(it) },
-            modifier = Modifier.padding(bottom = 12.dp)
+            modifier = Modifier
+                .tourTarget(TourTarget.SearchBar, tourState) { t, r -> targetPositions[t] = r }
+                .padding(bottom = 12.dp)
         )
 
         // Main content: Sidebar + App Grid
@@ -204,12 +223,14 @@ fun LauncherScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            CategorySidebar(
-                activeCategory = uiState.activeCategory,
-                visibleCategories = uiState.visibleCategories,
-                categoryConfigs = uiState.categoryConfigs,
-                onCategorySelected = { viewModel.setActiveCategory(it) }
-            )
+            Box(modifier = Modifier.tourTarget(TourTarget.CategorySidebar, tourState) { t, r -> targetPositions[t] = r }) {
+                CategorySidebar(
+                    activeCategory = uiState.activeCategory,
+                    visibleCategories = uiState.visibleCategories,
+                    categoryConfigs = uiState.categoryConfigs,
+                    onCategorySelected = { viewModel.setActiveCategory(it) }
+                )
+            }
 
             // Vertical divider
             Box(
@@ -244,10 +265,24 @@ fun LauncherScreen(
                 onClearCategory = { viewModel.clearCategoryOverride(it) },
                 onAppInfo = { viewModel.openAppInfo(it) },
                 onUninstall = { viewModel.uninstallApp(it) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .tourTarget(TourTarget.AppGrid, tourState) { t, r -> targetPositions[t] = r }
             )
         }
     }
+
+    }
+
+    if (tourState.isActive) {
+        ProductTourOverlay(
+            tourState = tourState,
+            targetPositions = targetPositions,
+            onNext = { viewModel.nextTourStep() },
+            onPrevious = { viewModel.previousTourStep() },
+            onSkip = { viewModel.skipProductTour() },
+            modifier = Modifier.zIndex(999f)
+        )
     }
 
     // ── Splash Screen Overlay ──────────────────────────────────────────────

@@ -113,7 +113,7 @@ internal object LauncherUiStateMapper {
         )
     }
 
-    fun map(input: LauncherUiProjectionInput, appContent: LauncherAppContentState): LauncherUiState {
+    fun map(input: LauncherUiProjectionInput, appContent: LauncherAppContentState, tourState: dev.vive.kdelauncher.ui.tour.TourState): LauncherUiState {
         return LauncherUiState(
             allApps = appContent.allApps,
             filteredApps = appContent.filteredApps,
@@ -142,6 +142,7 @@ internal object LauncherUiStateMapper {
             aiConnectionState = input.ai.aiConnectionState,
             aiModel = input.ai.aiModel,
             organizationState = input.ai.organizationState,
+            tourState = tourState
         )
     }
 

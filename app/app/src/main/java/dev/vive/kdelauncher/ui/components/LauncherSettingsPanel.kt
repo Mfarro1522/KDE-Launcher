@@ -87,6 +87,7 @@ fun LauncherSettingsPanel(
     onOrganizeApps: () -> Unit,
     onApplySuggestions: (List<dev.vive.kdelauncher.data.model.CategorySuggestion>) -> Unit,
     onCancelOrganization: () -> Unit,
+    onResetTour: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
@@ -624,6 +625,42 @@ fun LauncherSettingsPanel(
             onApplySuggestions = onApplySuggestions,
             onCancelOrganization = onCancelOrganization
         )
+
+        // ── Tour ─────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surfaceVariant.copy(alpha = 0.3f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onResetTour
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.School,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = colors.onSurfaceVariant
+                )
+            }
+            Text(
+                text = "Volver a ver el tutorial",
+                style = LauncherTypography.bodyMedium,
+                color = colors.onSurfaceVariant
+            )
+        }
 
         // ── Divider ──────────────────────────────────────
         HorizontalDivider(color = colors.border.copy(alpha = 0.4f))

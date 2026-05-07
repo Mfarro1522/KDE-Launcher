@@ -23,6 +23,8 @@ import dev.vive.kdelauncher.domain.usecase.SetCategoryOverrideUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleFavoriteUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleWorkAppUseCase
 import dev.vive.kdelauncher.domain.usecase.UninstallAppUseCase
+import dev.vive.kdelauncher.domain.usecase.CheckProductTourStatusUseCase
+import dev.vive.kdelauncher.domain.usecase.DismissProductTourUseCase
 
 /**
  * Manual dependency injection container.
@@ -54,4 +56,6 @@ class AppContainer(private val application: Application) {
     val uninstallAppUseCase = UninstallAppUseCase(application)
     val connectAiProviderUseCase = dev.vive.kdelauncher.domain.usecase.ConnectAiProviderUseCase()
     val organizeAppsWithAiUseCase = dev.vive.kdelauncher.domain.usecase.OrganizeAppsWithAiUseCase()
+    val checkProductTourStatusUseCase = CheckProductTourStatusUseCase(settingsManager)
+    val dismissProductTourUseCase = DismissProductTourUseCase(settingsManager)
 }

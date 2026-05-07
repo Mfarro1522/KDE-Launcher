@@ -49,6 +49,25 @@ fun LabsSection(
     val colors = LocalColors.current
     val accent = LocalLauncherAccent.current
     
+    var showConsentDialog by remember { mutableStateOf(false) }
+
+    if (showConsentDialog) {
+        AlertDialog(
+            onDismissRequest = { showConsentDialog = false },
+            title = { Text("Permiso de Privacidad") },
+            text = { Text("Para usar TAPO Labs y organizar tus aplicaciones, necesitamos tu permiso para enviar la lista de tus apps instaladas a un proveedor de Inteligencia Artificial (Groq, Gemini o Cohere). Tus datos no se almacenan permanentemente.\n\n¿Aceptas activar esta función?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onToggleLabs(true)
+                    showConsentDialog = false
+                }) { Text("Aceptar", color = accent.primary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConsentDialog = false }) { Text("Cancelar", color = colors.onSurfaceVariant) }
+            }
+        )
+    }
+
     Column(modifier = modifier.fillMaxWidth()) {
         // Toggle de Labs
         Row(
@@ -56,7 +75,13 @@ fun LabsSection(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(colors.surfaceVariant.copy(alpha = 0.6f))
-                .clickable { onToggleLabs(!labsEnabled) }
+                .clickable { 
+                    if (!labsEnabled) {
+                        showConsentDialog = true
+                    } else {
+                        onToggleLabs(false)
+                    }
+                }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -94,7 +119,13 @@ fun LabsSection(
             }
             Switch(
                 checked = labsEnabled,
-                onCheckedChange = { onToggleLabs(it) },
+                onCheckedChange = { 
+                    if (it) {
+                        showConsentDialog = true
+                    } else {
+                        onToggleLabs(false)
+                    }
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = accent.primary,
                     checkedTrackColor = accent.primaryBg,
