@@ -542,11 +542,8 @@ fun LauncherSettingsPanel(
         var dragOffset by remember { mutableStateOf(0f) }
         var itemHeightPx by remember { mutableStateOf(0f) }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            itemsIndexed(
-                items = orderedConfigs,
-                key = { _, item -> item.category }
-            ) { index, config ->
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            orderedConfigs.forEachIndexed { index, config ->
                 val count = appCounts[config.category] ?: 0
                 val isAll = config.category == dev.vive.kdelauncher.data.model.AppCategory.ALL
                 val isFav = config.category == dev.vive.kdelauncher.data.model.AppCategory.FAVORITES
@@ -581,7 +578,6 @@ fun LauncherSettingsPanel(
                     isFirst = index == 0,
                     isLast = index == orderedConfigs.lastIndex,
                     modifier = Modifier
-                        .animateItem()
                         .graphicsLayer {
                             translationY = animatedOffset
                         }

@@ -76,31 +76,65 @@ internal data class LauncherAppContentState(
 
 internal object LauncherUiStateMapper {
 
-    fun mapAppContent(input: LauncherAppContentInput): LauncherAppContentState {
-        val appsWithMeta = input.app.allApps.map { appModel ->
-            val isWorkApp = isWorkApp(appModel, input.system.hasRealWorkProfile, input.profile.workApps)
-            val overrideCategory = input.category.categoryOverrides[categoryOverrideKey(appModel, isWorkApp)]
-            val favorites = if (isWorkApp) input.profile.workFavorites else input.profile.personalFavorites
+    fun mapAppsWithMeta(
+        apps: List<AppModel>,
+        profile: LauncherProfileInput,
+        categoryOverrides: Map<String, String>,
+        hasRealWorkProfile: Boolean,
+        workApps: Set<String>
+    ): List<AppModel> {
+        return apps.map { appModel ->
+            val isWorkApp = isWorkApp(appModel, hasRealWorkProfile, workApps)
+            val overrideCategory = categoryOverrides[categoryOverrideKey(appModel, isWorkApp)]
+            val favorites = if (isWorkApp) profile.workFavorites else profile.personalFavorites
             appModel.copy(
                 isFavorite = favorites.contains(appModel.packageName),
                 profileTag = if (isWorkApp) ProfileType.WORK else ProfileType.PERSONAL,
                 category = overrideCategory ?: appModel.category
             )
         }
+    }
 
-        val profileFiltered = filterByProfile(appsWithMeta, input.profile.currentProfile.type)
-        val filtered = filterVisibleApps(
-            apps = appsWithMeta,
-            profileFilteredApps = profileFiltered,
-            searchQuery = input.app.searchQuery,
-            activeCategory = input.app.activeCategory
-        )
+    fun mapAppContentFiltered(
+        appsWithMeta: List<AppModel>,
+        searchQuery: String,
+        activeCategory: String,
+        currentProfile: Profile
+    ): LauncherAppContentState {
+        val profileFiltered = filterByProfile(appsWithMeta, currentProfile.type)
+        val filtered = if (searchQuery.isNotBlank()) {
+            appsWithMeta.filter {
+                it.label.contains(searchQuery, ignoreCase = true) ||
+                    it.packageName.contains(searchQuery, ignoreCase = true)
+            }
+        } else when (activeCategory) {
+            AppCategory.FAVORITES -> profileFiltered.filter { it.isFavorite }
+            AppCategory.ALL -> profileFiltered
+            else -> profileFiltered.filter { it.category == activeCategory }
+        }
         val counts = buildCategoryCounts(profileFiltered)
 
         return LauncherAppContentState(
             allApps = appsWithMeta,
             filteredApps = filtered,
             appCounts = counts
+        )
+    }
+
+    // Legacy overload kept for compatibility
+    fun mapAppContent(input: LauncherAppContentInput): LauncherAppContentState {
+        val appsWithMeta = mapAppsWithMeta(
+            apps = input.app.allApps,
+            profile = input.profile,
+            categoryOverrides = input.category.categoryOverrides,
+            hasRealWorkProfile = input.system.hasRealWorkProfile,
+            workApps = input.profile.workApps
+        )
+        return mapAppContentFiltered(
+            appsWithMeta = appsWithMeta,
+            searchQuery = input.app.searchQuery,
+            activeCategory = input.app.activeCategory,
+            currentProfile = input.profile.currentProfile
         )
     }
 
@@ -152,26 +186,6 @@ internal object LauncherUiStateMapper {
         return when (profileType) {
             ProfileType.WORK -> apps.filter { it.profileTag == ProfileType.WORK }
             ProfileType.PERSONAL -> apps.filter { it.profileTag == ProfileType.PERSONAL }
-        }
-    }
-
-    private fun filterVisibleApps(
-        apps: List<AppModel>,
-        profileFilteredApps: List<AppModel>,
-        searchQuery: String,
-        activeCategory: String
-    ): List<AppModel> {
-        if (searchQuery.isNotBlank()) {
-            return apps.filter {
-                it.label.contains(searchQuery, ignoreCase = true) ||
-                    it.packageName.contains(searchQuery, ignoreCase = true)
-            }
-        }
-
-        return when (activeCategory) {
-            AppCategory.FAVORITES -> profileFilteredApps.filter { it.isFavorite }
-            AppCategory.ALL -> profileFilteredApps
-            else -> profileFilteredApps.filter { it.category == activeCategory }
         }
     }
 

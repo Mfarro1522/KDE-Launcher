@@ -229,19 +229,47 @@ class LauncherViewModel(
         LauncherSystemInput(def, work, locked)
     }
 
-    private val appContentInput = combine(
-        appInput,
+    // Separate metadata computation (expensive) from filtering (cheap)
+    private val appsWithMetaFlow = combine(
+        _allApps,
         profileInput,
         categoryInput,
         systemInput
-    ) { app, profile, category, system ->
-        LauncherAppContentInput(
-            app = app,
+    ) { apps, profile, category, system ->
+        LauncherUiStateMapper.mapAppsWithMeta(
+            apps = apps,
             profile = profile,
-            category = category,
-            system = system
+            categoryOverrides = category.categoryOverrides,
+            hasRealWorkProfile = system.hasRealWorkProfile,
+            workApps = profile.workApps
         )
-    }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    private val appContentState = combine(
+        appsWithMetaFlow,
+        _searchQuery,
+        _activeCategory,
+        profileInput
+    ) { appsWithMeta, query, activeCategory, profile ->
+        LauncherUiStateMapper.mapAppContentFiltered(
+            appsWithMeta = appsWithMeta,
+            searchQuery = query,
+            activeCategory = activeCategory,
+            currentProfile = profile.currentProfile
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = LauncherAppContentState(
+            allApps = emptyList(),
+            filteredApps = emptyList(),
+            appCounts = emptyMap()
+        )
+    )
 
     private val uiInput = combine(
         combine(appInput, settingsDisplayInput, settingsIconInput) { app, display, icon ->
@@ -260,18 +288,6 @@ class LauncherViewModel(
             system = profileCatSys.third
         )
     }
-
-    private val appContentState = appContentInput
-        .map(LauncherUiStateMapper::mapAppContent)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = LauncherAppContentState(
-                allApps = emptyList(),
-                filteredApps = emptyList(),
-                appCounts = emptyMap()
-            )
-        )
 
     val uiState: StateFlow<LauncherUiState> = combine(
         uiInput,
@@ -572,6 +588,7 @@ class LauncherViewModel(
                     setCategoryOverrideUseCase(key, suggestion.proposedCategory)
                 }
             }
+            _pendingInstallSuggestions.value = emptyList()
             _organizationSuggestionState.value = OrganizationSuggestionState.Applied
         }
     }
