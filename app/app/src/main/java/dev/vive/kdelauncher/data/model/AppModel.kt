@@ -27,7 +27,8 @@ data class AppModel(
     val isFavorite: Boolean = false,
     val profileTag: ProfileType = ProfileType.PERSONAL,
     val userHandle: UserHandle? = null,
-    val versionCode: Long = 0L
+    val versionCode: Long = 0L,
+    val isSystemApp: Boolean = false
 )
 
 /**
@@ -40,9 +41,17 @@ object AppCategory {
     const val SOCIAL = "social"
     const val PRODUCTIVITY = "productivity"
     const val UTILITIES = "utilities"
+    const val SYSTEM = "system"
+    const val GAMES = "games"
+    const val MUSIC = "music"
+    const val STREAMING = "streaming"
+    const val MULTIMEDIA = "multimedia"
 
     /** Categories always visible in settings / tabs */
     val FIXED = listOf(FAVORITES, ALL, SOCIAL, PRODUCTIVITY, UTILITIES)
+
+    /** Categories handled locally and excluded from AI payload. */
+    val AI_EXCLUDED = setOf(SYSTEM, GAMES, MUSIC, STREAMING, MULTIMEDIA)
 
     /** Human-readable labels (Spanish). Dynamic categories fallback to capitalized ID. */
     fun displayName(id: String): String = when (id) {
@@ -51,9 +60,13 @@ object AppCategory {
         SOCIAL -> "Social"
         PRODUCTIVITY -> "Productividad"
         UTILITIES -> "Utilidades"
+        SYSTEM -> "Apps del Sistema"
+        GAMES -> "Juegos"
+        MUSIC -> "Música"
+        STREAMING -> "Streaming"
+        MULTIMEDIA -> "Multimedia"
         "media" -> "Media"
         "creativity" -> "Creatividad"
-        "games" -> "Juegos"
         "finance" -> "Finanzas"
         "shopping" -> "Compras"
         "travel" -> "Viajes"
@@ -69,9 +82,13 @@ object AppCategory {
         SOCIAL -> "Forum"
         PRODUCTIVITY -> "Work"
         UTILITIES -> "Build"
+        SYSTEM -> "Settings"
+        GAMES -> "Gamepad"
+        MUSIC -> "Headphones"
+        STREAMING -> "Cloud"
+        MULTIMEDIA -> "Headphones"
         "media" -> "PlayArrow"
         "creativity" -> "Palette"
-        "games" -> "Gamepad"
         "finance" -> "AttachMoney"
         "shopping" -> "ShoppingCart"
         "travel" -> "Map"
@@ -107,8 +124,8 @@ object AppCategorizer {
         "com.android.vending" to "shopping",
         "com.facebook.pages.app" to "social",
         "com.google.android.apps.photos" to "creativity",
-        "com.google.android.youtube" to "media",
-        "com.google.android.play.games" to "games"
+        "com.google.android.youtube" to AppCategory.STREAMING,
+        "com.google.android.play.games" to AppCategory.GAMES
     )
 
     private val categoryRules = listOf(
@@ -168,17 +185,26 @@ object AppCategorizer {
         CategoryRule("games", "games", baseScore = 16),
         CategoryRule("play", "games", baseScore = 5),
 
-        // Media
-        CategoryRule("music", "media", baseScore = 14),
-        CategoryRule("spotify", "media", baseScore = 16),
-        CategoryRule("video", "media", baseScore = 14),
-        CategoryRule("youtube", "media", baseScore = 16),
-        CategoryRule("vlc", "media", baseScore = 16),
-        CategoryRule("podcast", "media", baseScore = 14),
-        CategoryRule("player", "media", baseScore = 16),
-        CategoryRule("audio", "media", baseScore = 14),
-        CategoryRule("netflix", "media", baseScore = 16),
-        CategoryRule("tiktok", "media", baseScore = 14),
+        // Music
+        CategoryRule("music", AppCategory.MUSIC, baseScore = 14),
+        CategoryRule("spotify", AppCategory.MUSIC, baseScore = 16),
+        CategoryRule("deezer", AppCategory.MUSIC, baseScore = 16),
+        CategoryRule("tidal", AppCategory.MUSIC, baseScore = 16),
+        CategoryRule("apple.music", AppCategory.MUSIC, baseScore = 16),
+        CategoryRule("amazon.music", AppCategory.MUSIC, baseScore = 16),
+        CategoryRule("podcast", AppCategory.MUSIC, baseScore = 14),
+        CategoryRule("audio", AppCategory.MUSIC, baseScore = 14),
+
+        // Streaming / Video
+        CategoryRule("video", AppCategory.STREAMING, baseScore = 14),
+        CategoryRule("youtube", AppCategory.STREAMING, baseScore = 16),
+        CategoryRule("vlc", AppCategory.STREAMING, baseScore = 16),
+        CategoryRule("netflix", AppCategory.STREAMING, baseScore = 16),
+        CategoryRule("tiktok", AppCategory.STREAMING, baseScore = 14),
+        CategoryRule("prime.video", AppCategory.STREAMING, baseScore = 16),
+        CategoryRule("disney", AppCategory.STREAMING, baseScore = 16),
+        CategoryRule("hbo", AppCategory.STREAMING, baseScore = 16),
+        CategoryRule("twitch", AppCategory.STREAMING, baseScore = 16),
 
         // System / Utilities
         CategoryRule("settings", "utilities", baseScore = 18),
@@ -207,9 +233,12 @@ object AppCategorizer {
     )
 
     /**
-     * Categorize an app based on its package name and Android category info.
+     * Categorize an app based on its package name, Android category info,
+     * and whether it is a system app.
      */
-    fun categorize(packageName: String, androidCategory: Int): String {
+    fun categorize(packageName: String, androidCategory: Int, isSystemApp: Boolean = false): String {
+        if (isSystemApp) return AppCategory.SYSTEM
+
         val lowerPkg = packageName.lowercase()
         exactPackageCategories[lowerPkg]?.let { return it }
 
@@ -227,14 +256,14 @@ object AppCategorizer {
 
         // Fall back to Android's built-in category
         return when (androidCategory) {
-            android.content.pm.ApplicationInfo.CATEGORY_GAME -> "games"
-            android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> "media"
-            android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> "media"
+            android.content.pm.ApplicationInfo.CATEGORY_GAME -> AppCategory.GAMES
+            android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> AppCategory.MUSIC
+            android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> AppCategory.STREAMING
             android.content.pm.ApplicationInfo.CATEGORY_IMAGE -> "creativity"
-            android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> "social"
+            android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> AppCategory.SOCIAL
             android.content.pm.ApplicationInfo.CATEGORY_NEWS -> "browsers"
             android.content.pm.ApplicationInfo.CATEGORY_MAPS -> "travel"
-            android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> "productivity"
+            android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> AppCategory.PRODUCTIVITY
             else -> AppCategory.ALL
         }
     }

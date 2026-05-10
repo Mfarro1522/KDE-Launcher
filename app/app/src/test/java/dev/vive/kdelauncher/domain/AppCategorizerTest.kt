@@ -1,5 +1,6 @@
 package dev.vive.kdelauncher.domain
 
+import android.content.pm.ApplicationInfo
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppCategorizer
 import io.kotest.core.spec.style.FunSpec
@@ -7,42 +8,51 @@ import io.kotest.matchers.shouldBe
 
 class AppCategorizerTest : FunSpec({
 
+    context("system apps") {
+        test("isSystemApp=true returns SYSTEM regardless of package name") {
+            AppCategorizer.categorize("com.example.game", -1, isSystemApp = true) shouldBe AppCategory.SYSTEM
+        }
+        test("com.android.settings without system flag goes to utilities") {
+            AppCategorizer.categorize("com.android.settings", -1) shouldBe AppCategory.UTILITIES
+        }
+    }
+
     context("development apps") {
-        test("com.termux -> DEVELOPMENT") {
-            AppCategorizer.categorize("com.termux", -1) shouldBe AppCategory.DEVELOPMENT
+        test("com.termux -> development") {
+            AppCategorizer.categorize("com.termux", -1) shouldBe "development"
         }
-        test("com.github.android -> DEVELOPMENT") {
-            AppCategorizer.categorize("com.github.android", -1) shouldBe AppCategory.DEVELOPMENT
+        test("com.github.android -> development") {
+            AppCategorizer.categorize("com.github.android", -1) shouldBe "development"
         }
-        test("com.google.android.apps.code -> DEVELOPMENT") {
-            AppCategorizer.categorize("com.google.android.apps.code", -1) shouldBe AppCategory.DEVELOPMENT
-        }
-        test("com.jetbrains.rider -> DEVELOPMENT") {
-            AppCategorizer.categorize("com.jetbrains.rider", -1) shouldBe AppCategory.DEVELOPMENT
+        test("com.google.android.apps.code -> development") {
+            AppCategorizer.categorize("com.google.android.apps.code", -1) shouldBe "development"
         }
     }
 
-    context("graphics apps") {
-        test("com.google.android.apps.photos -> GRAPHICS") {
-            AppCategorizer.categorize("com.google.android.apps.photos", -1) shouldBe AppCategory.GRAPHICS
+    context("creativity apps") {
+        test("com.google.android.apps.photos -> creativity") {
+            AppCategorizer.categorize("com.google.android.apps.photos", -1) shouldBe "creativity"
         }
-        test("package containing 'gallery' -> GRAPHICS") {
-            AppCategorizer.categorize("com.example.gallery.app", -1) shouldBe AppCategory.GRAPHICS
+        test("package containing 'gallery' -> creativity") {
+            AppCategorizer.categorize("com.example.gallery.app", -1) shouldBe "creativity"
         }
-        test("com.niksoftware.snapseed -> GRAPHICS") {
-            AppCategorizer.categorize("com.niksoftware.snapseed", -1) shouldBe AppCategory.GRAPHICS
+        test("com.niksoftware.snapseed -> creativity") {
+            AppCategorizer.categorize("com.niksoftware.snapseed", -1) shouldBe "creativity"
         }
     }
 
-    context("internet apps") {
-        test("com.android.chrome -> INTERNET") {
-            AppCategorizer.categorize("com.android.chrome", -1) shouldBe AppCategory.INTERNET
+    context("browser apps") {
+        test("com.android.chrome -> browsers") {
+            AppCategorizer.categorize("com.android.chrome", -1) shouldBe "browsers"
         }
-        test("com.whatsapp -> INTERNET") {
-            AppCategorizer.categorize("com.whatsapp", -1) shouldBe AppCategory.INTERNET
+    }
+
+    context("social apps") {
+        test("com.whatsapp -> social") {
+            AppCategorizer.categorize("com.whatsapp", -1) shouldBe AppCategory.SOCIAL
         }
-        test("com.discord -> INTERNET") {
-            AppCategorizer.categorize("com.discord", -1) shouldBe AppCategory.INTERNET
+        test("com.discord -> social") {
+            AppCategorizer.categorize("com.discord", -1) shouldBe AppCategory.SOCIAL
         }
     }
 
@@ -55,21 +65,24 @@ class AppCategorizerTest : FunSpec({
         }
     }
 
-    context("multimedia apps") {
-        test("com.spotify.music -> MULTIMEDIA") {
-            AppCategorizer.categorize("com.spotify.music", -1) shouldBe AppCategory.MULTIMEDIA
+    context("music apps") {
+        test("com.spotify.music -> MUSIC") {
+            AppCategorizer.categorize("com.spotify.music", -1) shouldBe AppCategory.MUSIC
         }
-        test("com.google.android.youtube -> MULTIMEDIA (contains 'youtube')") {
-            AppCategorizer.categorize("com.google.android.youtube", -1) shouldBe AppCategory.MULTIMEDIA
+        test("package containing 'music' -> MUSIC") {
+            AppCategorizer.categorize("com.example.music.app", -1) shouldBe AppCategory.MUSIC
         }
-        test("com.netflix.mediaclient -> MULTIMEDIA") {
-            AppCategorizer.categorize("com.netflix.mediaclient", -1) shouldBe AppCategory.MULTIMEDIA
+        test("com.maxmpz.audioplayer -> MUSIC (audio token)") {
+            AppCategorizer.categorize("com.maxmpz.audioplayer", -1) shouldBe AppCategory.MUSIC
         }
     }
 
-    context("system apps") {
-        test("com.android.settings -> SYSTEM") {
-            AppCategorizer.categorize("com.android.settings", -1) shouldBe AppCategory.SYSTEM
+    context("streaming apps") {
+        test("com.google.android.youtube -> STREAMING") {
+            AppCategorizer.categorize("com.google.android.youtube", -1) shouldBe AppCategory.STREAMING
+        }
+        test("com.netflix.mediaclient -> STREAMING") {
+            AppCategorizer.categorize("com.netflix.mediaclient", -1) shouldBe AppCategory.STREAMING
         }
     }
 
@@ -77,11 +90,8 @@ class AppCategorizerTest : FunSpec({
         test("com.android.calculator2 -> UTILITIES") {
             AppCategorizer.categorize("com.android.calculator2", -1) shouldBe AppCategory.UTILITIES
         }
-        test("com.google.android.apps.maps -> UTILITIES") {
-            AppCategorizer.categorize("com.google.android.apps.maps", -1) shouldBe AppCategory.UTILITIES
-        }
-        test("com.android.contacts -> UTILITIES") {
-            AppCategorizer.categorize("com.android.contacts", -1) shouldBe AppCategory.UTILITIES
+        test("com.android.contacts -> social") {
+            AppCategorizer.categorize("com.android.contacts", -1) shouldBe AppCategory.SOCIAL
         }
     }
 
@@ -96,55 +106,41 @@ class AppCategorizerTest : FunSpec({
 
     context("regression: known conflict cases") {
         test("Google Play Store (com.android.vending) is resolved by exact allowlist") {
-            AppCategorizer.categorize("com.android.vending", -1) shouldBe AppCategory.INTERNET
-        }
-
-        test("audioplayer prefers multimedia tokens over generic play match") {
-            AppCategorizer.categorize("com.maxmpz.audioplayer", -1) shouldBe AppCategory.MULTIMEDIA
+            AppCategorizer.categorize("com.android.vending", -1) shouldBe "shopping"
         }
 
         test("Facebook Pages Manager is resolved by exact allowlist") {
-            AppCategorizer.categorize("com.facebook.pages.app", -1) shouldBe AppCategory.INTERNET
-        }
-    }
-
-    context("scoring behavior") {
-        test("longer multimedia token outranks generic game token inside same package") {
-            AppCategorizer.categorize("org.example.player.gamehub", -1) shouldBe AppCategory.MULTIMEDIA
-        }
-
-        test("exact token match outranks weaker partial token") {
-            AppCategorizer.categorize("com.example.music.app", -1) shouldBe AppCategory.MULTIMEDIA
+            AppCategorizer.categorize("com.facebook.pages.app", -1) shouldBe AppCategory.SOCIAL
         }
     }
 
     context("Android system category fallback") {
         test("CATEGORY_GAME falls back to GAMES") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_GAME) shouldBe AppCategory.GAMES
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_GAME) shouldBe AppCategory.GAMES
         }
 
-        test("CATEGORY_AUDIO falls back to MULTIMEDIA") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_AUDIO) shouldBe AppCategory.MULTIMEDIA
+        test("CATEGORY_AUDIO falls back to MUSIC") {
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_AUDIO) shouldBe AppCategory.MUSIC
         }
 
-        test("CATEGORY_VIDEO falls back to MULTIMEDIA") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_VIDEO) shouldBe AppCategory.MULTIMEDIA
+        test("CATEGORY_VIDEO falls back to STREAMING") {
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_VIDEO) shouldBe AppCategory.STREAMING
         }
 
-        test("CATEGORY_IMAGE falls back to GRAPHICS") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_IMAGE) shouldBe AppCategory.GRAPHICS
+        test("CATEGORY_IMAGE falls back to creativity") {
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_IMAGE) shouldBe "creativity"
         }
 
-        test("CATEGORY_SOCIAL falls back to INTERNET") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_SOCIAL) shouldBe AppCategory.INTERNET
+        test("CATEGORY_SOCIAL falls back to SOCIAL") {
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_SOCIAL) shouldBe AppCategory.SOCIAL
         }
 
-        test("CATEGORY_MAPS falls back to UTILITIES") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_MAPS) shouldBe AppCategory.UTILITIES
+        test("CATEGORY_MAPS falls back to travel") {
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_MAPS) shouldBe "travel"
         }
 
-        test("CATEGORY_PRODUCTIVITY falls back to UTILITIES") {
-            AppCategorizer.categorize("com.unknown.app", android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY) shouldBe AppCategory.UTILITIES
+        test("CATEGORY_PRODUCTIVITY falls back to PRODUCTIVITY") {
+            AppCategorizer.categorize("com.unknown.app", ApplicationInfo.CATEGORY_PRODUCTIVITY) shouldBe AppCategory.PRODUCTIVITY
         }
 
         test("unknown category falls back to ALL") {

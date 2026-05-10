@@ -106,6 +106,7 @@ dependencies {
     testImplementation(libs.kotest.property)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.json)
 
     // Instrumented tests
     androidTestImplementation(platform(libs.androidx.compose.bom))

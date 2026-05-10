@@ -27,6 +27,10 @@ interface SettingsManager {
     val categoryIconNames: Flow<Map<String, String>>
     suspend fun setCategoryIconName(category: String, iconName: String)
 
+    val customCategories: Flow<Set<String>>
+    suspend fun addCustomCategory(id: String)
+    suspend fun removeCustomCategory(id: String)
+
     val hiddenCategories: Flow<Set<String>>
     suspend fun setCategoryHidden(category: String, hidden: Boolean)
 

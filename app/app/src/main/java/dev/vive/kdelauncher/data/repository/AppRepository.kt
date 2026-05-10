@@ -151,9 +151,11 @@ class AppRepositoryImpl(
                         icon = icon,
                         category = AppCategorizer.categorize(
                             installedApp.packageName,
-                            installedApp.androidCategory
+                            installedApp.androidCategory,
+                            installedApp.isSystemApp
                         ),
-                        versionCode = installedApp.versionCode
+                        versionCode = installedApp.versionCode,
+                        isSystemApp = installedApp.isSystemApp
                     )
                 }
                 .sortedBy { it.label.lowercase() }

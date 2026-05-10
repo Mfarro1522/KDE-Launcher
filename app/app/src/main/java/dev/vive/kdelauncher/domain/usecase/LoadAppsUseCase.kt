@@ -32,15 +32,17 @@ class LoadAppsUseCase(
                         label = app.label,
                         icon = app.icon,
                         category = dev.vive.kdelauncher.data.model.AppCategorizer.categorize(
-                            app.packageName, app.androidCategory
+                            app.packageName, app.androidCategory, isSystemApp = false
                         ),
                         userHandle = app.userHandle,
-                        versionCode = app.versionCode
+                        versionCode = app.versionCode,
+                        isSystemApp = false
                     )
                 }
             } else emptyList()
 
-            val metadataApps = mergeApps(personalMeta, workMeta)
+            val mergedApps = mergeApps(personalMeta, workMeta)
+            val metadataApps = applyMultimediaGrouping(mergedApps)
 
             val iconsByKey = withContext(Dispatchers.IO) {
                 val personalDeferreds = personalMeta.map { app ->
@@ -87,6 +89,52 @@ class LoadAppsUseCase(
         personalApps: List<AppModel>,
         workApps: List<AppModel>
     ): List<AppModel> = (personalApps + workApps).sortedBy { it.label.lowercase() }
+
+    /**
+     * Apply dynamic multimedia grouping rules:
+     * - If music >= 5 → keep "music" category
+     * - If streaming >= 5 → keep "streaming" category
+     * - If neither >= 5 but combined >= 5 → merge into "multimedia"
+     * - Otherwise → merge into "media"
+     */
+    private fun applyMultimediaGrouping(apps: List<AppModel>): List<AppModel> {
+        val musicCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.MUSIC }
+        val streamingCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.STREAMING }
+        val mediaCount = apps.count { it.category == "media" }
+
+        val totalMedia = musicCount + streamingCount + mediaCount
+
+        return if (musicCount >= 5 || streamingCount >= 5) {
+            // Keep individual categories; merge any legacy "media" into "multimedia"
+            apps.map { app ->
+                if (app.category == "media") app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.MULTIMEDIA)
+                else app
+            }
+        } else if (totalMedia >= 5) {
+            // Merge all media-related into "multimedia"
+            apps.map { app ->
+                if (app.category in setOf(
+                        dev.vive.kdelauncher.data.model.AppCategory.MUSIC,
+                        dev.vive.kdelauncher.data.model.AppCategory.STREAMING,
+                        "media"
+                    )
+                ) {
+                    app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.MULTIMEDIA)
+                } else app
+            }
+        } else {
+            // Few media apps: collapse into generic "media"
+            apps.map { app ->
+                if (app.category in setOf(
+                        dev.vive.kdelauncher.data.model.AppCategory.MUSIC,
+                        dev.vive.kdelauncher.data.model.AppCategory.STREAMING
+                    )
+                ) {
+                    app.copy(category = "media")
+                } else app
+            }
+        }
+    }
 
     private fun iconKey(app: AppModel): String {
         val handleId = app.userHandle?.hashCode() ?: 0

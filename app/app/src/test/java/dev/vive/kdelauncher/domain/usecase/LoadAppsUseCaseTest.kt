@@ -18,7 +18,7 @@ class LoadAppsUseCaseTest : FunSpec({
     test("merges personal and work profile apps sorted by label") {
         val appRepository = FakeAppRepository(
             metadataApps = listOf(
-                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.INTERNET),
+                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.SOCIAL),
                 AppModel("com.personal.notes", ".Main", "Notes", category = AppCategory.UTILITIES)
             )
         )
@@ -47,7 +47,7 @@ class LoadAppsUseCaseTest : FunSpec({
     test("does not query work profile apps when there is no real work profile") {
         val appRepository = FakeAppRepository(
             metadataApps = listOf(
-                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.INTERNET)
+                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.SOCIAL)
             )
         )
         val workProfileManager = FakeWorkProfileManager(hasRealWorkProfile = false)
@@ -66,7 +66,7 @@ class LoadAppsUseCaseTest : FunSpec({
 
         val appRepository = FakeAppRepository(
             metadataApps = listOf(
-                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.INTERNET)
+                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.SOCIAL)
             ),
             iconsByPackage = mapOf("com.personal.mail" to personalBitmap)
         )

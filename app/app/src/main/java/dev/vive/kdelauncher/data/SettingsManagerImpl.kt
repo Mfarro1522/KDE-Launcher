@@ -32,6 +32,7 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         val AI_MODEL = stringPreferencesKey("ai_model")
         val PRODUCT_TOUR_COMPLETED = booleanPreferencesKey("product_tour_completed")
         val CATEGORY_ORDER = stringPreferencesKey("category_order")
+        val CUSTOM_CATEGORIES = stringSetPreferencesKey("custom_categories")
 
         fun categoryNameKey(category: String) =
             stringPreferencesKey("cat_name_$category")
@@ -102,12 +103,19 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
     private val knownCategories = setOf(
         "favorites", "all", "social", "productivity", "utilities",
         "media", "creativity", "games", "finance", "shopping",
-        "travel", "browsers", "development"
+        "travel", "browsers", "development",
+        "system", "music", "streaming", "multimedia"
     )
+
+    private val allCategoryIds: Flow<Set<String>> = context.dataStore.data
+        .map { prefs ->
+            knownCategories + (prefs[Keys.CUSTOM_CATEGORIES] ?: emptySet())
+        }
 
     override val categoryDisplayNames: Flow<Map<String, String>> = context.dataStore.data
         .map { prefs ->
-            knownCategories.associateWith { cat ->
+            val all = knownCategories + (prefs[Keys.CUSTOM_CATEGORIES] ?: emptySet())
+            all.associateWith { cat ->
                 prefs[Keys.categoryNameKey(cat)] ?: AppCategory.displayName(cat)
             }
         }
@@ -120,13 +128,35 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
 
     override val categoryIconNames: Flow<Map<String, String>> = context.dataStore.data
         .map { prefs ->
-            knownCategories.associateWith { cat ->
+            val all = knownCategories + (prefs[Keys.CUSTOM_CATEGORIES] ?: emptySet())
+            all.associateWith { cat ->
                 prefs[Keys.categoryIconKey(cat)] ?: AppCategory.defaultIcon(cat)
             }
         }
 
     override suspend fun setCategoryIconName(category: String, iconName: String) {
         context.dataStore.edit { it[Keys.categoryIconKey(category)] = iconName }
+    }
+
+    // --- Custom categories ---
+
+    override val customCategories: Flow<Set<String>> = context.dataStore.data
+        .map { it[Keys.CUSTOM_CATEGORIES] ?: emptySet() }
+
+    override suspend fun addCustomCategory(id: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.CUSTOM_CATEGORIES] ?: emptySet()
+            prefs[Keys.CUSTOM_CATEGORIES] = current + id
+        }
+    }
+
+    override suspend fun removeCustomCategory(id: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.CUSTOM_CATEGORIES] ?: emptySet()
+            prefs[Keys.CUSTOM_CATEGORIES] = current - id
+            prefs.remove(Keys.categoryNameKey(id))
+            prefs.remove(Keys.categoryIconKey(id))
+        }
     }
 
     // --- Hidden categories ---
@@ -204,10 +234,16 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         context.dataStore.edit { prefs ->
             prefs.remove(Keys.HIDDEN_CATEGORIES)
             prefs.remove(Keys.CATEGORY_ORDER)
+            val custom = prefs[Keys.CUSTOM_CATEGORIES] ?: emptySet()
             knownCategories.forEach { category ->
                 prefs.remove(Keys.categoryNameKey(category))
                 prefs.remove(Keys.categoryIconKey(category))
             }
+            custom.forEach { category ->
+                prefs.remove(Keys.categoryNameKey(category))
+                prefs.remove(Keys.categoryIconKey(category))
+            }
+            prefs.remove(Keys.CUSTOM_CATEGORIES)
         }
     }
 

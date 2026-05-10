@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -138,7 +140,60 @@ fun LauncherScreen(
             }
         }
 
-
+        // ── New app categorization suggestions banner ──────────────────────
+        val pendingSuggestions = uiState.pendingInstallSuggestions
+        AnimatedVisibility(
+            visible = pendingSuggestions.isNotEmpty(),
+            enter = expandVertically(tween(300)) + fadeIn(tween(300)),
+            exit = shrinkVertically(tween(200)) + fadeOut(tween(200))
+        ) {
+            val firstSuggestion = pendingSuggestions.firstOrNull()
+            val suggestionText = if (pendingSuggestions.size == 1 && firstSuggestion != null) {
+                "${firstSuggestion.label} → ${dev.vive.kdelauncher.data.model.AppCategory.displayName(firstSuggestion.proposedCategory)}"
+            } else {
+                "${pendingSuggestions.size} apps sin categoría"
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                accent.primary.copy(alpha = 0.15f),
+                                accent.primary.copy(alpha = 0.05f)
+                            )
+                        )
+                    )
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = accent.primary
+                )
+                Text(
+                    text = "Sugerencia: $suggestionText",
+                    fontSize = 12.sp,
+                    color = accent.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    onClick = { viewModel.applyOrganizationSuggestions(pendingSuggestions) }
+                ) {
+                    Text("Aplicar", color = accent.primary, fontSize = 12.sp)
+                }
+                TextButton(
+                    onClick = { viewModel.clearPendingInstallSuggestions() }
+                ) {
+                    Text("Ignorar", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                }
+            }
+        }
 
         // Profile header with gear icon for settings
         ProfileHeader(
@@ -173,11 +228,6 @@ fun LauncherScreen(
                 installedIconPacks = uiState.installedIconPacks,
                 selectedIconPack = uiState.selectedIconPack,
                 isLoadingIconPacks = uiState.isLoadingIconPacks,
-                labsEnabled = uiState.labsEnabled,
-                aiProvider = uiState.aiProvider,
-                aiConnectionState = uiState.aiConnectionState,
-                aiModel = uiState.aiModel,
-                organizationState = uiState.organizationState,
                 onToggleTheme = { viewModel.toggleTheme() },
                 onColorThemeChange = { viewModel.setColorTheme(it) },
                 onToggleAppLabels = {
@@ -191,23 +241,20 @@ fun LauncherScreen(
                 onCategoryToggleHidden = { viewModel.toggleCategoryHidden(it) },
                 onDeleteCategory = { cat, count -> viewModel.deleteCategory(cat, count) },
                 onCategoryOrderChange = { viewModel.setCategoryOrder(it) },
+                onAddCategory = { viewModel.addCustomCategory(it) },
                 onSelectIconPack = { viewModel.setIconPack(it) },
                 onReset = { viewModel.resetSettings() },
-                onToggleLabs = { viewModel.setLabsEnabled(it) },
-                onConnectAi = { provider, key -> viewModel.connectAiProviderType(provider, key) },
-                onDisconnectAi = { viewModel.disconnectAiProviderType() },
-                onSetAiModel = { viewModel.setAiModel(it) },
-                onOrganizeApps = { viewModel.organizeAppsWithAi() },
-                onApplySuggestions = { viewModel.applyAiSuggestions(it) },
-                onCancelOrganization = { viewModel.cancelAiOrganization() },
                 onResetTour = {
                     if (uiState.showSettings) {
                         viewModel.toggleSettings()
                     }
                     viewModel.startProductTour()
                 },
+                organizationSuggestionState = uiState.organizationSuggestionState,
+                onSuggestOrganization = { viewModel.suggestOrganization() },
+                onApplyOrganizationSuggestions = { viewModel.applyOrganizationSuggestions(it) },
+                onCancelOrganization = { viewModel.cancelOrganization() },
                 modifier = Modifier
-                    .tourTarget(TourTarget.Labs, tourState) { t, r -> targetPositions[t] = r }
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .heightIn(max = 420.dp)
             )

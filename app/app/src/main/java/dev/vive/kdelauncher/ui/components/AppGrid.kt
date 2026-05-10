@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
@@ -175,23 +176,23 @@ fun AppGrid(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
                 ) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(menuItemBg)
                             .clickable {
                                 menuApp = null
                                 onToggleFavorite(menuAppCurrent)
-                            },
-                        contentAlignment = Alignment.Center
+                            }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
                             imageVector = favoriteIcon,
@@ -199,19 +200,25 @@ fun AppGrid(
                             modifier = Modifier.size(20.dp),
                             tint = if (isFavorite) accent.primary else colors.onSurfaceVariant
                         )
+                        Text(
+                            text = if (isFavorite) "Quitar" else "Favorito",
+                            style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
 
-                    Box(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(menuItemBg)
                             .clickable {
                                 menuApp = null
                                 showCategoryPicker = menuAppCurrent
-                            },
-                        contentAlignment = Alignment.Center
+                            }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Add,
@@ -219,26 +226,38 @@ fun AppGrid(
                             modifier = Modifier.size(20.dp),
                             tint = colors.onSurfaceVariant
                         )
+                        Text(
+                            text = "Mover",
+                            style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
 
                     if (showRemoveAction) {
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(menuItemBg)
                                 .clickable {
                                     menuApp = null
                                     onRemove()
-                                },
-                            contentAlignment = Alignment.Center
+                                }
+                                .padding(vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.DeleteOutline,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                                 tint = colors.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Quitar",
+                                style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp)
                             )
                         }
                     }
@@ -278,17 +297,39 @@ fun AppGrid(
 
     val categoryApp = showCategoryPicker
     if (categoryApp != null) {
+        val accent = LocalLauncherAccent.current
         AlertDialog(
             onDismissRequest = { showCategoryPicker = null },
-            title = { Text("Elegir categoría") },
+            title = { Text("Mover a categoría") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     categoryOptions.forEach { (category, label) ->
-                        TextButton(onClick = {
-                            onAssignCategory(categoryApp, category)
-                            showCategoryPicker = null
-                        }) {
-                            Text(label)
+                        val iconName = categoryConfigs.find { it.category == category }?.iconName
+                            ?: AppCategory.defaultIcon(category)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surfaceVariant.copy(alpha = 0.35f))
+                                .clickable {
+                                    onAssignCategory(categoryApp, category)
+                                    showCategoryPicker = null
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = IconResolver.resolve(iconName),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = accent.primary
+                            )
+                            Text(
+                                text = label,
+                                style = LauncherTypography.bodyMedium,
+                                color = colors.onBackground
+                            )
                         }
                     }
                 }

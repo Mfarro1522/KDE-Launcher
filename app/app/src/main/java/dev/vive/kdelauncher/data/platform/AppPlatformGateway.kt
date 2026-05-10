@@ -13,7 +13,8 @@ data class InstalledLauncherApp(
     val activityName: String,
     val label: String,
     val androidCategory: Int,
-    val versionCode: Long
+    val versionCode: Long,
+    val isSystemApp: Boolean = false
 )
 
 interface AppPlatformGateway {
@@ -62,12 +63,16 @@ class AndroidAppPlatformGateway(
                     0L
                 }
                 
+                val appInfo = activityInfo.applicationInfo
+                val isSystemApp = (appInfo?.flags?.and(android.content.pm.ApplicationInfo.FLAG_SYSTEM) ?: 0) != 0
+
                 InstalledLauncherApp(
                     packageName = activityInfo.packageName,
                     activityName = activityInfo.name,
                     label = resolveInfo.loadLabel(pm).toString(),
-                    androidCategory = activityInfo.applicationInfo?.category ?: -1,
-                    versionCode = versionCode
+                    androidCategory = appInfo?.category ?: -1,
+                    versionCode = versionCode,
+                    isSystemApp = isSystemApp
                 )
             }
     }

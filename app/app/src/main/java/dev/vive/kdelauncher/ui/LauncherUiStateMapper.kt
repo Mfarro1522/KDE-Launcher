@@ -52,22 +52,13 @@ internal data class LauncherSystemInput(
     val isWorkProfileLocked: Boolean
 )
 
-internal data class LauncherAiInput(
-    val labsEnabled: Boolean,
-    val aiProvider: dev.vive.kdelauncher.data.model.AiProviderType,
-    val aiModel: String,
-    val aiConnectionState: AiConnectionState,
-    val organizationState: OrganizationState
-)
-
 internal data class LauncherUiProjectionInput(
     val app: LauncherAppInput,
     val settingsDisplay: LauncherSettingsDisplayInput,
     val settingsIcon: LauncherSettingsIconInput,
     val profile: LauncherProfileInput,
     val category: LauncherCategoryInput,
-    val system: LauncherSystemInput,
-    val ai: LauncherAiInput
+    val system: LauncherSystemInput
 )
 
 internal data class LauncherAppContentInput(
@@ -113,7 +104,13 @@ internal object LauncherUiStateMapper {
         )
     }
 
-    fun map(input: LauncherUiProjectionInput, appContent: LauncherAppContentState, tourState: dev.vive.kdelauncher.ui.tour.TourState): LauncherUiState {
+    fun map(
+        input: LauncherUiProjectionInput,
+        appContent: LauncherAppContentState,
+        organizationSuggestionState: OrganizationSuggestionState,
+        pendingInstallSuggestions: List<dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase.Suggestion>,
+        tourState: dev.vive.kdelauncher.ui.tour.TourState
+    ): LauncherUiState {
         return LauncherUiState(
             allApps = appContent.allApps,
             filteredApps = appContent.filteredApps,
@@ -137,11 +134,8 @@ internal object LauncherUiStateMapper {
             isDefaultLauncher = input.system.isDefaultLauncher,
             hasRealWorkProfile = input.system.hasRealWorkProfile,
             isWorkProfileLocked = input.system.isWorkProfileLocked,
-            labsEnabled = input.ai.labsEnabled,
-            aiProvider = input.ai.aiProvider,
-            aiConnectionState = input.ai.aiConnectionState,
-            aiModel = input.ai.aiModel,
-            organizationState = input.ai.organizationState,
+            organizationSuggestionState = organizationSuggestionState,
+            pendingInstallSuggestions = pendingInstallSuggestions,
             tourState = tourState
         )
     }

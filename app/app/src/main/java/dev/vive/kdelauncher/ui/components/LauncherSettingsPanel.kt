@@ -19,6 +19,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -54,6 +64,7 @@ data class CategoryConfig(
  * Launcher settings panel — theme toggle, category editor, reset.
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun LauncherSettingsPanel(
     isDarkTheme: Boolean,
     colorTheme: dev.vive.kdelauncher.data.model.ColorTheme,
@@ -66,11 +77,6 @@ fun LauncherSettingsPanel(
     installedIconPacks: List<IconPackInfo>,
     selectedIconPack: String?,
     isLoadingIconPacks: Boolean,
-    labsEnabled: Boolean,
-    aiProvider: dev.vive.kdelauncher.data.model.AiProviderType,
-    aiConnectionState: dev.vive.kdelauncher.ui.AiConnectionState,
-    aiModel: String,
-    organizationState: dev.vive.kdelauncher.ui.OrganizationState,
     onToggleTheme: () -> Unit,
     onColorThemeChange: (dev.vive.kdelauncher.data.model.ColorTheme) -> Unit,
     onToggleAppLabels: () -> Unit,
@@ -82,16 +88,14 @@ fun LauncherSettingsPanel(
     onCategoryToggleHidden: (String) -> Unit,
     onDeleteCategory: (String, Int) -> Unit,
     onCategoryOrderChange: (List<String>) -> Unit,
+    onAddCategory: (String) -> Unit,
     onSelectIconPack: (String?) -> Unit,
     onReset: () -> Unit,
-    onToggleLabs: (Boolean) -> Unit,
-    onConnectAi: (dev.vive.kdelauncher.data.model.AiProviderType, String) -> Unit,
-    onDisconnectAi: () -> Unit,
-    onSetAiModel: (String) -> Unit,
-    onOrganizeApps: () -> Unit,
-    onApplySuggestions: (List<dev.vive.kdelauncher.data.model.AppCategorization>) -> Unit,
-    onCancelOrganization: () -> Unit,
     onResetTour: () -> Unit,
+    organizationSuggestionState: dev.vive.kdelauncher.ui.OrganizationSuggestionState,
+    onSuggestOrganization: () -> Unit,
+    onApplyOrganizationSuggestions: (List<dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase.Suggestion>) -> Unit,
+    onCancelOrganization: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
@@ -534,11 +538,25 @@ fun LauncherSettingsPanel(
             orderedConfigs.addAll(categoryConfigs)
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            orderedConfigs.forEachIndexed { index, config ->
+        var draggingIndex by remember { mutableStateOf<Int?>(null) }
+        var dragOffset by remember { mutableStateOf(0f) }
+        var itemHeightPx by remember { mutableStateOf(0f) }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            itemsIndexed(
+                items = orderedConfigs,
+                key = { _, item -> item.category }
+            ) { index, config ->
                 val count = appCounts[config.category] ?: 0
                 val isAll = config.category == dev.vive.kdelauncher.data.model.AppCategory.ALL
                 val isFav = config.category == dev.vive.kdelauncher.data.model.AppCategory.FAVORITES
+                val isDragging = draggingIndex == index
+                val animatedOffset by animateFloatAsState(
+                    targetValue = if (isDragging) dragOffset else 0f,
+                    animationSpec = spring(stiffness = 300f),
+                    label = "dragOffset"
+                )
+
                 CategorySettingsRow(
                     config = config,
                     appCount = count,
@@ -562,8 +580,92 @@ fun LauncherSettingsPanel(
                     isDeleteProtected = isAll || isFav,
                     isFirst = index == 0,
                     isLast = index == orderedConfigs.lastIndex,
+                    modifier = Modifier
+                        .animateItem()
+                        .graphicsLayer {
+                            translationY = animatedOffset
+                        }
+                        .zIndex(if (isDragging) 1f else 0f)
+                        .onSizeChanged { itemHeightPx = it.height.toFloat() }
+                        .pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    if (!isAll && !isFav) {
+                                        draggingIndex = index
+                                    }
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    dragOffset += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    if (itemHeightPx > 0) {
+                                        val targetOffset = (dragOffset / itemHeightPx).toInt()
+                                        val targetIndex = (index + targetOffset)
+                                            .coerceIn(0, orderedConfigs.lastIndex)
+                                        if (targetIndex != index) {
+                                            val item = orderedConfigs.removeAt(index)
+                                            orderedConfigs.add(targetIndex, item)
+                                            onCategoryOrderChange(orderedConfigs.map { it.category })
+                                        }
+                                    }
+                                    draggingIndex = null
+                                    dragOffset = 0f
+                                },
+                                onDragCancel = {
+                                    draggingIndex = null
+                                    dragOffset = 0f
+                                }
+                            )
+                        }
                 )
             }
+        }
+
+        // ── Add category button ──────────────────────────
+        var showAddCategoryDialog by remember { mutableStateOf(false) }
+        var newCategoryName by remember { mutableStateOf("") }
+
+        if (showAddCategoryDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddCategoryDialog = false },
+                title = { Text("Nueva categoría") },
+                text = {
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        label = { Text("Nombre") },
+                        singleLine = true
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newCategoryName.isNotBlank()) {
+                                onAddCategory(newCategoryName.trim())
+                                newCategoryName = ""
+                            }
+                            showAddCategoryDialog = false
+                        }
+                    ) {
+                        Text("Crear", color = accent.primary)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddCategoryDialog = false }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
+        }
+
+        OutlinedButton(
+            onClick = { showAddCategoryDialog = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Rounded.Add, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Agregar categoría")
         }
 
         // ── Divider ──────────────────────────────────────
@@ -642,21 +744,16 @@ fun LauncherSettingsPanel(
         // ── Divider ──────────────────────────────────────
         HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
 
-        // ── TAPO Labs ─────────────────────────────────────────────
-        LabsSection(
-            labsEnabled = labsEnabled,
-            onToggleLabs = onToggleLabs,
-            aiProvider = aiProvider,
-            aiConnectionState = aiConnectionState,
-            aiModel = aiModel,
-            organizationState = organizationState,
-            onConnectAi = onConnectAi,
-            onDisconnectAi = onDisconnectAi,
-            onSetAiModel = onSetAiModel,
-            onOrganizeApps = onOrganizeApps,
-            onApplySuggestions = onApplySuggestions,
+        // ── Auto-organize (offline heuristics) ───────────
+        AutoOrganizeSection(
+            organizationSuggestionState = organizationSuggestionState,
+            onSuggestOrganization = onSuggestOrganization,
+            onApplySuggestions = onApplyOrganizationSuggestions,
             onCancelOrganization = onCancelOrganization
         )
+
+        // ── Divider ──────────────────────────────────────
+        HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
 
         // ── Tour ─────────────────────────────────────────
         Row(
@@ -784,6 +881,7 @@ private fun CategorySettingsRow(
     isDeleteProtected: Boolean = false,
     isFirst: Boolean = false,
     isLast: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
     val accent = LocalLauncherAccent.current
@@ -793,7 +891,7 @@ private fun CategorySettingsRow(
 
     val contentAlpha = if (config.isHidden) 0.38f else 1f
 
-    Column {
+    Column(modifier = modifier) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

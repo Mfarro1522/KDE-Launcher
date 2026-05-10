@@ -24,6 +24,7 @@ data class OrganizationDebugInfo(
     val providerName: String,
     val modelId: String,
     val candidateCount: Int,
+    val excludedCount: Int,
     val localMatchCount: Int,
     val aiCandidateCount: Int,
     val totalBatches: Int,
@@ -48,7 +49,10 @@ class OrganizeAppsWithAiUseCase(
         useCache: Boolean = false
     ): OrganizationResult = withContext(Dispatchers.IO) {
 
-        val candidates = apps.filter { it.profileTag == dev.vive.kdelauncher.data.model.ProfileType.PERSONAL }
+        val excludedCategories = dev.vive.kdelauncher.data.model.AppCategory.AI_EXCLUDED
+        val personalApps = apps.filter { it.profileTag == dev.vive.kdelauncher.data.model.ProfileType.PERSONAL }
+        val excludedCount = personalApps.count { it.category in excludedCategories }
+        val candidates = personalApps.filter { it.category !in excludedCategories }
 
         val cachedList = mutableListOf<AppCategorization>()
         val uncachedList = mutableListOf<AppModel>()
@@ -227,6 +231,7 @@ class OrganizeAppsWithAiUseCase(
                 providerName = provider.name,
                 modelId = provider.modelId,
                 candidateCount = candidates.size,
+                excludedCount = excludedCount,
                 localMatchCount = localList.size,
                 aiCandidateCount = needsAiList.size,
                 totalBatches = chunks.size,
