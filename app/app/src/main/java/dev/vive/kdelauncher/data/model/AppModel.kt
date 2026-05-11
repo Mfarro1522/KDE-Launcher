@@ -3,6 +3,8 @@ package dev.vive.kdelauncher.data.model
 import android.graphics.Bitmap
 import android.os.UserHandle
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.graphics.asImageBitmap
 
 /**
  * Immutable wrapper for Bitmap so Compose treats it as stable.
@@ -11,13 +13,21 @@ import androidx.compose.runtime.Immutable
  */
 @Immutable
 data class AppIconBitmap(val bitmap: Bitmap) {
+    /** Pre-computed ImageBitmap — avoids allocating a new wrapper per recomposition. */
+    val imageBitmap by lazy { bitmap.asImageBitmap() }
+
     override fun equals(other: Any?): Boolean = this === other
     override fun hashCode(): Int = System.identityHashCode(bitmap)
 }
 
 /**
  * Represents a single launchable application on the device.
+ *
+ * Marked @Immutable because all fields are set at construction and never
+ * mutated. This lets Compose treat instances as stable and skip
+ * recomposition when the same reference is passed.
  */
+@Immutable
 data class AppModel(
     val packageName: String,
     val activityName: String,
@@ -46,12 +56,16 @@ object AppCategory {
     const val MUSIC = "music"
     const val STREAMING = "streaming"
     const val MULTIMEDIA = "multimedia"
+    const val WALLETS = "wallets"
+    const val COMPRAS = "compras"
+    const val FINANZAS = "finanzas"
+    const val DEV = "dev"
 
     /** Categories always visible in settings / tabs */
     val FIXED = listOf(FAVORITES, ALL, SOCIAL, PRODUCTIVITY, UTILITIES)
 
     /** Categories handled locally and excluded from AI payload. */
-    val AI_EXCLUDED = setOf(SYSTEM, GAMES, MUSIC, STREAMING, MULTIMEDIA)
+    val AI_EXCLUDED = setOf(SYSTEM, GAMES, MUSIC, STREAMING, MULTIMEDIA, WALLETS, COMPRAS, FINANZAS, DEV)
 
     /** Human-readable labels (Spanish). Dynamic categories fallback to capitalized ID. */
     fun displayName(id: String): String = when (id) {
@@ -65,6 +79,10 @@ object AppCategory {
         MUSIC -> "Música"
         STREAMING -> "Streaming"
         MULTIMEDIA -> "Multimedia"
+        WALLETS -> "Wallets"
+        COMPRAS -> "Compras"
+        FINANZAS -> "Finanzas"
+        DEV -> "Dev"
         "media" -> "Media"
         "creativity" -> "Creatividad"
         "finance" -> "Finanzas"
@@ -87,6 +105,10 @@ object AppCategory {
         MUSIC -> "Headphones"
         STREAMING -> "Cloud"
         MULTIMEDIA -> "Headphones"
+        WALLETS -> "Diamond"
+        COMPRAS -> "ShoppingCart"
+        FINANZAS -> "AttachMoney"
+        DEV -> "Terminal"
         "media" -> "PlayArrow"
         "creativity" -> "Palette"
         "finance" -> "AttachMoney"
@@ -129,18 +151,55 @@ object AppCategorizer {
     )
 
     private val categoryRules = listOf(
-        // Development
-        CategoryRule("termux", "development", baseScore = 20),
-        CategoryRule("terminal", "development"),
-        CategoryRule("editor", "development"),
-        CategoryRule("ide", "development"),
-        CategoryRule("code", "development"),
-        CategoryRule("github", "development"),
-        CategoryRule("gitlab", "development"),
-        CategoryRule("docker", "development"),
+        // Wallets / Crypto
+        CategoryRule("binance", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("coinbase", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("yape", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("paypal", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("lemon", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("wise", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("mercadopago", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("crypto", AppCategory.WALLETS, baseScore = 16),
+        CategoryRule("wallet", AppCategory.WALLETS, baseScore = 16),
+        CategoryRule("blockchain", AppCategory.WALLETS, baseScore = 16),
+        CategoryRule("ledger", AppCategory.WALLETS, baseScore = 16),
+        CategoryRule("metamask", AppCategory.WALLETS, baseScore = 20),
+        CategoryRule("trust", AppCategory.WALLETS, baseScore = 16),
+        CategoryRule("exodus", AppCategory.WALLETS, baseScore = 16),
+        CategoryRule("monero", AppCategory.WALLETS, baseScore = 16),
+
+        // Compras / E-commerce / Delivery
+        CategoryRule("rappi", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("mercadolibre", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("amazon", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("aliexpress", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("pedidosya", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("ubereats", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("doordash", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("grubhub", AppCategory.COMPRAS, baseScore = 20),
+        CategoryRule("delivery", AppCategory.COMPRAS, baseScore = 14),
+        CategoryRule("shop", AppCategory.COMPRAS, baseScore = 12),
+        CategoryRule("store", AppCategory.COMPRAS, baseScore = 10),
+
+        // Dev (heavy dev tools)
+        CategoryRule("termux", AppCategory.DEV, baseScore = 20),
+        CategoryRule("fdroid", AppCategory.DEV, baseScore = 20),
+        CategoryRule("github", AppCategory.DEV, baseScore = 20),
+        CategoryRule("gitlab", AppCategory.DEV, baseScore = 20),
+        CategoryRule("acode", AppCategory.DEV, baseScore = 20),
+        CategoryRule("obsidian", AppCategory.DEV, baseScore = 16),
+        CategoryRule("neo.store", AppCategory.DEV, baseScore = 20),
+        CategoryRule("terminal", AppCategory.DEV, baseScore = 16),
+        CategoryRule("docker", AppCategory.DEV, baseScore = 16),
+        CategoryRule("git", AppCategory.DEV, baseScore = 16),
+        CategoryRule("editor", AppCategory.DEV, baseScore = 12),
+        CategoryRule("ide", AppCategory.DEV, baseScore = 14),
+        CategoryRule("code", AppCategory.DEV, baseScore = 12),
+        CategoryRule("dev", AppCategory.DEV, baseScore = 10),
+
+        // Development (general)
         CategoryRule("database", "development"),
         CategoryRule("sql", "development"),
-        CategoryRule("dev", "development", baseScore = 6),
 
         // Graphics / Creativity
         CategoryRule("gallery", "creativity"),

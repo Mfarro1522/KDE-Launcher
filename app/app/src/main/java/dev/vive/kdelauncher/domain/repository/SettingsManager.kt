@@ -62,5 +62,17 @@ interface SettingsManager {
     val productTourCompleted: Flow<Boolean>
     suspend fun setProductTourCompleted(completed: Boolean)
 
+    val firstLaunchCompleted: Flow<Boolean>
+    suspend fun setFirstLaunchCompleted(completed: Boolean)
+
+    // --- Hidden apps ---
+    val hiddenApps: Flow<Set<String>>
+    suspend fun setAppHidden(packageName: String, hidden: Boolean)
+
+    val tempHiddenApps: Flow<Map<String, Long>>
+    suspend fun setTempHidden(packageName: String, untilTimestamp: Long)
+    suspend fun clearTempHidden(packageName: String)
+    suspend fun clearAllTempHidden()
+
     suspend fun resetAll()
 }

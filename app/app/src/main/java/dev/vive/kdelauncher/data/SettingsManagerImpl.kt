@@ -31,8 +31,11 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         val AI_API_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
         val PRODUCT_TOUR_COMPLETED = booleanPreferencesKey("product_tour_completed")
+        val FIRST_LAUNCH_COMPLETED = booleanPreferencesKey("first_launch_completed")
         val CATEGORY_ORDER = stringPreferencesKey("category_order")
         val CUSTOM_CATEGORIES = stringSetPreferencesKey("custom_categories")
+        val HIDDEN_APPS = stringSetPreferencesKey("hidden_apps")
+        val TEMP_HIDDEN_APPS = stringPreferencesKey("temp_hidden_apps")
 
         fun categoryNameKey(category: String) =
             stringPreferencesKey("cat_name_$category")
@@ -104,7 +107,8 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         "favorites", "all", "social", "productivity", "utilities",
         "media", "creativity", "games", "finance", "shopping",
         "travel", "browsers", "development",
-        "system", "music", "streaming", "multimedia"
+        "system", "music", "streaming", "multimedia",
+        "wallets", "compras", "finanzas", "dev"
     )
 
     private val allCategoryIds: Flow<Set<String>> = context.dataStore.data
@@ -295,6 +299,61 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
 
     override suspend fun setProductTourCompleted(completed: Boolean) {
         context.dataStore.edit { it[Keys.PRODUCT_TOUR_COMPLETED] = completed }
+    }
+
+    // --- First Launch ---
+
+    override val firstLaunchCompleted: Flow<Boolean> = context.dataStore.data
+        .map { it[Keys.FIRST_LAUNCH_COMPLETED] ?: false }
+
+    override suspend fun setFirstLaunchCompleted(completed: Boolean) {
+        context.dataStore.edit { it[Keys.FIRST_LAUNCH_COMPLETED] = completed }
+    }
+
+    // --- Hidden apps ---
+
+    override val hiddenApps: Flow<Set<String>> = context.dataStore.data
+        .map { it[Keys.HIDDEN_APPS] ?: emptySet() }
+
+    override suspend fun setAppHidden(packageName: String, hidden: Boolean) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.HIDDEN_APPS] ?: emptySet()
+            prefs[Keys.HIDDEN_APPS] = if (hidden) current + packageName else current - packageName
+        }
+    }
+
+    override val tempHiddenApps: Flow<Map<String, Long>> = context.dataStore.data
+        .map { prefs ->
+            val raw = prefs[Keys.TEMP_HIDDEN_APPS] ?: ""
+            if (raw.isBlank()) emptyMap()
+            else raw.split(";").mapNotNull { entry ->
+                val parts = entry.split("=", limit = 2)
+                if (parts.size == 2) {
+                    val pkg = parts[0]
+                    val ts = parts[1].toLongOrNull() ?: 0L
+                    if (ts > System.currentTimeMillis()) pkg to ts else null
+                } else null
+            }.toMap()
+        }
+
+    override suspend fun setTempHidden(packageName: String, untilTimestamp: Long) {
+        context.dataStore.edit { prefs ->
+            val current = (prefs[Keys.TEMP_HIDDEN_APPS] ?: "").split(";").filter { it.isNotBlank() }
+            val filtered = current.filter { !it.startsWith("$packageName=") }
+            val newEntry = "$packageName=$untilTimestamp"
+            prefs[Keys.TEMP_HIDDEN_APPS] = (filtered + newEntry).joinToString(";")
+        }
+    }
+
+    override suspend fun clearTempHidden(packageName: String) {
+        context.dataStore.edit { prefs ->
+            val current = (prefs[Keys.TEMP_HIDDEN_APPS] ?: "").split(";").filter { it.isNotBlank() }
+            prefs[Keys.TEMP_HIDDEN_APPS] = current.filter { !it.startsWith("$packageName=") }.joinToString(";")
+        }
+    }
+
+    override suspend fun clearAllTempHidden() {
+        context.dataStore.edit { it.remove(Keys.TEMP_HIDDEN_APPS) }
     }
 
     // --- Reset ---

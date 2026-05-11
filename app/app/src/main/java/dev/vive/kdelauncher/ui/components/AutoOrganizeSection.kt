@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase
 import dev.vive.kdelauncher.ui.OrganizationSuggestionState
+import dev.vive.kdelauncher.ui.theme.LauncherColors
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
 import dev.vive.kdelauncher.ui.theme.LocalColors
 import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
@@ -75,14 +76,14 @@ fun AutoOrganizeSection(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF8B5CF6).copy(alpha = 0.2f)),
+                    .background(LauncherColors.AccentPurpleBg),
                 contentAlignment = Alignment.Center
             ) {
                 androidx.compose.material3.Icon(
                     imageVector = Icons.Rounded.AutoAwesome,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = Color(0xFF8B5CF6)
+                    tint = LauncherColors.AccentPurple
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
@@ -209,14 +210,14 @@ fun AutoOrganizeSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF10B981).copy(alpha = 0.2f))
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    androidx.compose.material3.Icon(Icons.Rounded.CheckCircle, null, tint = Color(0xFF10B981))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Categorías aplicadas", color = Color(0xFF10B981))
+                    .background(LauncherColors.SuccessGreenBg)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Icon(Icons.Rounded.CheckCircle, null, tint = LauncherColors.SuccessGreen)
+                Spacer(Modifier.size(8.dp))
+                Text("Categorías aplicadas", color = LauncherColors.SuccessGreen)
                 }
                 LaunchedEffect(Unit) {
                     delay(2000)

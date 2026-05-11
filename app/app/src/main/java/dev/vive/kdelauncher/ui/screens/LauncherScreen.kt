@@ -12,7 +12,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Warning
@@ -21,18 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.input.pointer.pointerInput
-import kotlinx.coroutines.delay
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vive.kdelauncher.ui.LauncherViewModel
 import dev.vive.kdelauncher.ui.components.*
-import dev.vive.kdelauncher.ui.theme.LauncherTypography
+import dev.vive.kdelauncher.ui.theme.LauncherColors
 import dev.vive.kdelauncher.ui.theme.LocalColors
 import dev.vive.kdelauncher.ui.theme.LocalLauncherAccent
 import androidx.compose.ui.zIndex
@@ -63,27 +53,34 @@ fun LauncherScreen(
     viewModel: LauncherViewModel,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val tourState = uiState.tourState
+        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val appGridState by viewModel.appGridState.collectAsStateWithLifecycle()
+    val tourState by viewModel.tourState.collectAsStateWithLifecycle()
+    val organizationSuggestionState by viewModel.organizationSuggestionState.collectAsStateWithLifecycle()
+    val pendingInstallSuggestions by viewModel.pendingInstallSuggestions.collectAsStateWithLifecycle()
     val targetPositions = remember { androidx.compose.runtime.mutableStateMapOf<TourTarget, androidx.compose.ui.geometry.Rect>() }
-    val resetCounter by viewModel.homeResetCounter.collectAsState()
+    val resetCounter by viewModel.homeResetCounter.collectAsStateWithLifecycle()
+    val hiddenApps by viewModel.hiddenApps.collectAsStateWithLifecycle()
+    val tempHiddenApps by viewModel.tempHiddenApps.collectAsStateWithLifecycle()
     val colors = LocalColors.current
     val accent = LocalLauncherAccent.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    var showSplash by rememberSaveable { mutableStateOf(true) }
+    // Only attach tour modifiers when the tour is actually active.
+    // This eliminates Modifier.Node overhead during normal usage.
+    fun Modifier.tourIfActive(
+        target: TourTarget,
+        onPositioned: (TourTarget, androidx.compose.ui.geometry.Rect) -> Unit
+    ): Modifier = if (tourState.isActive) {
+        this.then(Modifier.tourTarget(target, tourState, onPositioned))
+    } else {
+        this
+    }
 
     LaunchedEffect(resetCounter) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-    }
-
-    LaunchedEffect(uiState.isLoading) {
-        if (!uiState.isLoading) {
-            delay(1500) // Keep splash visible for a bit to allow GPU to settle
-            showSplash = false
-        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -102,15 +99,15 @@ fun LauncherScreen(
         ) {
             Row(
                 modifier = Modifier
-                    .tourTarget(TourTarget.Banner, tourState) { t, r -> targetPositions[t] = r }
+                    .tourIfActive(TourTarget.Banner) { t, r -> targetPositions[t] = r }
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
                         brush = Brush.horizontalGradient(
                             listOf(
-                                Color(0xFFFF9100).copy(alpha = 0.15f),
-                                Color(0xFFFF9100).copy(alpha = 0.05f)
+                                LauncherColors.AccentOrange.copy(alpha = 0.15f),
+                                LauncherColors.AccentOrange.copy(alpha = 0.05f)
                             )
                         )
                     )
@@ -123,35 +120,34 @@ fun LauncherScreen(
                     imageVector = Icons.Rounded.Warning,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = Color(0xFFFF9100)
+                    tint = LauncherColors.AccentOrange
                 )
                 Text(
                     text = "No es el launcher predeterminado. Toca aquí para activarlo.",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF9100),
+                    color = LauncherColors.AccentOrange,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = Color(0xFFFF9100).copy(alpha = 0.7f)
+                    tint = LauncherColors.AccentOrange.copy(alpha = 0.7f)
                 )
             }
         }
 
         // ── New app categorization suggestions banner ──────────────────────
-        val pendingSuggestions = uiState.pendingInstallSuggestions
         AnimatedVisibility(
-            visible = pendingSuggestions.isNotEmpty(),
+            visible = pendingInstallSuggestions.isNotEmpty(),
             enter = expandVertically(tween(300)) + fadeIn(tween(300)),
             exit = shrinkVertically(tween(200)) + fadeOut(tween(200))
         ) {
-            val firstSuggestion = pendingSuggestions.firstOrNull()
-            val suggestionText = if (pendingSuggestions.size == 1 && firstSuggestion != null) {
+            val firstSuggestion = pendingInstallSuggestions.firstOrNull()
+            val suggestionText = if (pendingInstallSuggestions.size == 1 && firstSuggestion != null) {
                 "${firstSuggestion.label} → ${dev.vive.kdelauncher.data.model.AppCategory.displayName(firstSuggestion.proposedCategory)}"
             } else {
-                "${pendingSuggestions.size} apps sin categoría"
+                "${pendingInstallSuggestions.size} apps sin categoría"
             }
             Row(
                 modifier = Modifier
@@ -183,7 +179,7 @@ fun LauncherScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    onClick = { viewModel.applyOrganizationSuggestions(pendingSuggestions) }
+                    onClick = { viewModel.applyOrganizationSuggestions(pendingInstallSuggestions) }
                 ) {
                     Text("Aplicar", color = accent.primary, fontSize = 12.sp)
                 }
@@ -204,10 +200,10 @@ fun LauncherScreen(
             hasRealWorkProfile = uiState.hasRealWorkProfile,
             isWorkProfileLocked = uiState.isWorkProfileLocked,
             modifier = Modifier
-                .tourTarget(TourTarget.ProfileHeader, tourState) { t, r -> targetPositions[t] = r }
+                .tourIfActive(TourTarget.ProfileHeader) { t, r -> targetPositions[t] = r }
                 .padding(top = 4.dp, bottom = 8.dp),
             settingsModifier = Modifier
-                .tourTarget(TourTarget.SettingsButton, tourState) { t, r -> targetPositions[t] = r }
+                .tourIfActive(TourTarget.SettingsButton) { t, r -> targetPositions[t] = r }
         )
 
         // Settings panel (collapsible, max 60% screen height)
@@ -219,22 +215,22 @@ fun LauncherScreen(
             LauncherSettingsPanel(
                 isDarkTheme = uiState.isDarkTheme,
                 colorTheme = uiState.colorTheme,
-                showAppLabels = uiState.showAppLabels,
-                iconSize = uiState.iconSize,
-                showIconBackground = uiState.showIconBackground,
-                gridColumns = uiState.gridColumns,
-                categoryConfigs = uiState.categoryConfigs,
-                appCounts = uiState.appCounts,
+                showAppLabels = appGridState.showAppLabels,
+                iconSize = appGridState.iconSize,
+                showIconBackground = appGridState.showIconBackground,
+                gridColumns = appGridState.gridColumns,
+                categoryConfigs = appGridState.categoryConfigs,
+                appCounts = appGridState.appCounts,
                 installedIconPacks = uiState.installedIconPacks,
                 selectedIconPack = uiState.selectedIconPack,
                 isLoadingIconPacks = uiState.isLoadingIconPacks,
                 onToggleTheme = { viewModel.toggleTheme() },
                 onColorThemeChange = { viewModel.setColorTheme(it) },
                 onToggleAppLabels = {
-                    viewModel.setShowAppLabels(!uiState.showAppLabels)
+                    viewModel.setShowAppLabels(!appGridState.showAppLabels)
                 },
                 onIconSizeChange = { viewModel.setIconSize(it) },
-                onIconBackgroundToggle = { viewModel.setShowIconBackground(!uiState.showIconBackground) },
+                onIconBackgroundToggle = { viewModel.setShowIconBackground(!appGridState.showIconBackground) },
                 onGridColumnsChange = { viewModel.setGridColumns(it) },
                 onCategoryRename = { cat, name -> viewModel.setCategoryDisplayName(cat, name) },
                 onCategoryIconChange = { cat, icon -> viewModel.setCategoryIconName(cat, icon) },
@@ -250,10 +246,19 @@ fun LauncherScreen(
                     }
                     viewModel.startProductTour()
                 },
-                organizationSuggestionState = uiState.organizationSuggestionState,
+                organizationSuggestionState = organizationSuggestionState,
                 onSuggestOrganization = { viewModel.suggestOrganization() },
                 onApplyOrganizationSuggestions = { viewModel.applyOrganizationSuggestions(it) },
                 onCancelOrganization = { viewModel.cancelOrganization() },
+                hiddenApps = hiddenApps,
+                tempHiddenApps = tempHiddenApps,
+                allApps = uiState.allApps,
+                onHideApp = { app, mins ->
+                    if (mins == 0) viewModel.hideApp(app.packageName)
+                    else if (mins == -1) viewModel.tempHideApp(app.packageName, Int.MAX_VALUE)
+                    else viewModel.tempHideApp(app.packageName, mins)
+                },
+                onUnhideApp = { viewModel.unhideApp(it) },
                 modifier = Modifier
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .heightIn(max = 420.dp)
@@ -262,10 +267,10 @@ fun LauncherScreen(
 
         // Search bar
         SearchBar(
-            query = uiState.searchQuery,
+            query = appGridState.searchQuery,
             onQueryChange = { viewModel.setSearchQuery(it) },
             modifier = Modifier
-                .tourTarget(TourTarget.SearchBar, tourState) { t, r -> targetPositions[t] = r }
+                .tourIfActive(TourTarget.SearchBar) { t, r -> targetPositions[t] = r }
                 .padding(bottom = 12.dp)
         )
 
@@ -275,11 +280,11 @@ fun LauncherScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            Box(modifier = Modifier.tourTarget(TourTarget.CategorySidebar, tourState) { t, r -> targetPositions[t] = r }) {
+            Box(modifier = Modifier.tourIfActive(TourTarget.CategorySidebar) { t, r -> targetPositions[t] = r }) {
                 CategorySidebar(
-                    activeCategory = uiState.activeCategory,
-                    visibleCategories = uiState.visibleCategories,
-                    categoryConfigs = uiState.categoryConfigs,
+                    activeCategory = appGridState.activeCategory,
+                    visibleCategories = appGridState.visibleCategories,
+                    categoryConfigs = appGridState.categoryConfigs,
                     onCategorySelected = { viewModel.setActiveCategory(it) }
                 )
             }
@@ -302,15 +307,15 @@ fun LauncherScreen(
             )
 
             AppGrid(
-                apps = uiState.filteredApps,
-                searchQuery = uiState.searchQuery,
-                activeCategory = uiState.activeCategory,
-                categoryConfigs = uiState.categoryConfigs,
-                visibleCategories = uiState.visibleCategories,
-                showAppLabels = uiState.showAppLabels,
-                iconSize = uiState.iconSize,
-                showIconBackground = uiState.showIconBackground,
-                gridColumns = uiState.gridColumns,
+                apps = appGridState.filteredApps,
+                searchQuery = appGridState.searchQuery,
+                activeCategory = appGridState.activeCategory,
+                categoryConfigs = appGridState.categoryConfigs,
+                visibleCategories = appGridState.visibleCategories,
+                showAppLabels = appGridState.showAppLabels,
+                iconSize = appGridState.iconSize,
+                showIconBackground = appGridState.showIconBackground,
+                gridColumns = appGridState.gridColumns,
                 onAppClick = { viewModel.launchApp(it) },
                 onToggleFavorite = { viewModel.toggleFavorite(it) },
                 onAssignCategory = { app, category -> viewModel.setCategoryOverride(app, category) },
@@ -319,7 +324,7 @@ fun LauncherScreen(
                 onUninstall = { viewModel.uninstallApp(it) },
                 modifier = Modifier
                     .weight(1f)
-                    .tourTarget(TourTarget.AppGrid, tourState) { t, r -> targetPositions[t] = r }
+                    .tourIfActive(TourTarget.AppGrid) { t, r -> targetPositions[t] = r }
             )
         }
     }
@@ -335,60 +340,6 @@ fun LauncherScreen(
             onSkip = { viewModel.skipProductTour() },
             modifier = Modifier.zIndex(999f)
         )
-    }
-
-    // ── Splash Screen Overlay ──────────────────────────────────────────────
-    AnimatedVisibility(
-        visible = showSplash,
-        enter = fadeIn(animationSpec = tween(500)),
-        exit = fadeOut(animationSpec = tween(1000))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(colors.background)
-                .pointerInput(Unit) {
-                    // Intercept touch events while splash is visible
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(accent.primary, accent.primary.copy(alpha = 0.5f))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Android, // Placeholder logo
-                        contentDescription = "Launcher Logo",
-                        modifier = Modifier.size(72.dp),
-                        tint = colors.background
-                    )
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "TAPO Launcher",
-                    style = LauncherTypography.headlineMedium,
-                    color = colors.onBackground,
-                    letterSpacing = 2.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Preparando interfaz...",
-                    style = LauncherTypography.bodyMedium,
-                    color = colors.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-            }
-        }
     }
 }
 

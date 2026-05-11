@@ -1,6 +1,7 @@
 package dev.vive.kdelauncher.ui
 
 import android.app.Application
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -32,14 +33,19 @@ import dev.vive.kdelauncher.service.PackageChangeReceiver
 import dev.vive.kdelauncher.ui.components.CategoryConfig
 import dev.vive.kdelauncher.ui.components.IconSize
 import dev.vive.kdelauncher.ui.components.parseIconSize
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed class OrganizationSuggestionState {
     object Idle : OrganizationSuggestionState()
@@ -73,12 +79,40 @@ data class LauncherUiState(
     val isLoadingIconPacks: Boolean = false,
     val isDefaultLauncher: Boolean = true,
     val hasRealWorkProfile: Boolean = false,
-    val isWorkProfileLocked: Boolean = false,
-    val organizationSuggestionState: OrganizationSuggestionState = OrganizationSuggestionState.Idle,
-    val pendingInstallSuggestions: List<dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase.Suggestion> = emptyList(),
-    val tourState: TourState = TourState()
+    val isWorkProfileLocked: Boolean = false
 )
 
+@Immutable
+data class AppGridState(
+    val filteredApps: List<AppModel> = emptyList(),
+    val searchQuery: String = "",
+    val activeCategory: String = AppCategory.FAVORITES,
+    val categoryConfigs: List<CategoryConfig> = emptyList(),
+    val visibleCategories: List<String> = AppCategory.FIXED,
+    val appCounts: Map<String, Int> = emptyMap(),
+    val showAppLabels: Boolean = true,
+    val iconSize: IconSize = IconSize.MEDIUM,
+    val showIconBackground: Boolean = true,
+    val gridColumns: Int = 3
+)
+
+internal data class GridContentInput(
+    val filteredApps: List<AppModel>,
+    val appCounts: Map<String, Int>,
+    val query: String,
+    val category: String,
+    val configs: List<CategoryConfig>,
+    val visible: List<String>
+)
+
+internal data class GridSettingsInput(
+    val labels: Boolean,
+    val size: IconSize,
+    val bg: Boolean,
+    val cols: Int
+)
+
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 class LauncherViewModel(
     application: Application,
     private val appRepository: AppRepository,
@@ -97,6 +131,8 @@ class LauncherViewModel(
     private val uninstallAppUseCase: UninstallAppUseCase,
     private val suggestAppOrganizationUseCase: dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase,
     private val categoryCache: dev.vive.kdelauncher.data.repository.CategoryCache,
+    private val appListCache: dev.vive.kdelauncher.data.repository.AppListCache,
+    private val persistentAppCache: dev.vive.kdelauncher.data.repository.PersistentAppCache,
     private val checkProductTourStatusUseCase: CheckProductTourStatusUseCase,
     private val dismissProductTourUseCase: DismissProductTourUseCase,
 ) : AndroidViewModel(application) {
@@ -104,12 +140,20 @@ class LauncherViewModel(
     // ── UI-controlled state ──────────────────────────────────────────────────
     private val _allApps = MutableStateFlow<List<AppModel>>(emptyList())
     private val _searchQuery = MutableStateFlow("")
+    private val _searchQueryDebounced = _searchQuery
+        .debounce(150)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ""
+        )
     private val _activeCategory = MutableStateFlow(AppCategory.FAVORITES)
     private val _showSettings = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(true)
     private val _isLoadingIconPacks = MutableStateFlow(false)
     private val _installedIconPacks = MutableStateFlow<List<dev.vive.kdelauncher.data.IconPackInfo>>(emptyList())
     private val _homeResetCounter = MutableStateFlow(0)
+    private val _firstLaunchCompleted = MutableStateFlow(false)
 
     private val _tourState = MutableStateFlow(TourState())
 
@@ -129,7 +173,22 @@ class LauncherViewModel(
         onPackageChanged = { refreshApps() }
     )
 
+    // ── Hidden apps state ────────────────────────────────────────────────────
+    private val _hiddenApps = MutableStateFlow<Set<String>>(emptySet())
+    private val _tempHiddenApps = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     // ── Derived flows from reactive repositories ─────────────────────────────
+    private val visibleAppsFlow = combine(
+        _allApps,
+        _hiddenApps,
+        _tempHiddenApps
+    ) { apps, hidden, tempHidden ->
+        val now = System.currentTimeMillis()
+        apps.filter { app ->
+            app.packageName !in hidden && (tempHidden[app.packageName] ?: 0L) <= now
+        }
+    }
+
     private data class CategoryBaseInput(
         val apps: List<AppModel>,
         val hidden: Set<String>,
@@ -139,7 +198,7 @@ class LauncherViewModel(
     )
 
     private val categoryBaseFlow = combine(
-        _allApps,
+        visibleAppsFlow,
         settingsManager.hiddenCategories,
         settingsManager.categoryDisplayNames,
         settingsManager.categoryIconNames,
@@ -171,7 +230,7 @@ class LauncherViewModel(
         configs.filter { !it.isHidden }.map { it.category }
     }
 
-    private val appInput = combine(_allApps, _searchQuery, _activeCategory) { apps, q, cat ->
+    private val appInput = combine(visibleAppsFlow, _searchQuery, _activeCategory) { apps, q, cat ->
         LauncherAppInput(apps, q, cat)
     }
 
@@ -231,7 +290,7 @@ class LauncherViewModel(
 
     // Separate metadata computation (expensive) from filtering (cheap)
     private val appsWithMetaFlow = combine(
-        _allApps,
+        visibleAppsFlow,
         profileInput,
         categoryInput,
         systemInput
@@ -251,7 +310,7 @@ class LauncherViewModel(
 
     private val appContentState = combine(
         appsWithMetaFlow,
-        _searchQuery,
+        _searchQueryDebounced,
         _activeCategory,
         profileInput
     ) { appsWithMeta, query, activeCategory, profile ->
@@ -261,15 +320,16 @@ class LauncherViewModel(
             activeCategory = activeCategory,
             currentProfile = profile.currentProfile
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = LauncherAppContentState(
-            allApps = emptyList(),
-            filteredApps = emptyList(),
-            appCounts = emptyMap()
+    }.flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = LauncherAppContentState(
+                allApps = emptyList(),
+                filteredApps = emptyList(),
+                appCounts = emptyMap()
+            )
         )
-    )
 
     private val uiInput = combine(
         combine(appInput, settingsDisplayInput, settingsIconInput) { app, display, icon ->
@@ -291,29 +351,115 @@ class LauncherViewModel(
 
     val uiState: StateFlow<LauncherUiState> = combine(
         uiInput,
-        appContentState,
-        _organizationSuggestionState,
-        _pendingInstallSuggestions,
-        _tourState
-    ) { input, appContent, orgState, pending, tour ->
-        LauncherUiStateMapper.map(input, appContent, orgState, pending, tour)
+        appContentState
+    ) { input, appContent ->
+        LauncherUiStateMapper.map(input, appContent)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = LauncherUiState()
     )
 
+    private val gridSettingsFlow = combine(
+        settingsManager.showAppLabels.distinctUntilChanged(),
+        settingsManager.iconSize.map { parseIconSize(it) }.distinctUntilChanged(),
+        settingsManager.showIconBackground.distinctUntilChanged(),
+        settingsManager.gridColumns.distinctUntilChanged()
+    ) { labels, size, bg, cols ->
+        GridSettingsInput(labels, size, bg, cols)
+    }
+
+    val appGridState: StateFlow<AppGridState> = combine(
+        combine(
+            appContentState,
+            _searchQuery,
+            _activeCategory,
+            categoryConfigsFlow.distinctUntilChanged(),
+            visibleCategoriesFlow.distinctUntilChanged()
+        ) { content, query, category, configs, visible ->
+            GridContentInput(content.filteredApps, content.appCounts, query, category, configs, visible)
+        },
+        gridSettingsFlow
+    ) { content, settings ->
+        AppGridState(
+            filteredApps = content.filteredApps,
+            searchQuery = content.query,
+            activeCategory = content.category,
+            categoryConfigs = content.configs,
+            visibleCategories = content.visible,
+            appCounts = content.appCounts,
+            showAppLabels = settings.labels,
+            iconSize = settings.size,
+            showIconBackground = settings.bg,
+            gridColumns = settings.cols
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = AppGridState()
+    )
+
+    val tourState: StateFlow<TourState> = _tourState
+    val organizationSuggestionState: StateFlow<OrganizationSuggestionState> = _organizationSuggestionState
+    val pendingInstallSuggestions: StateFlow<List<dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase.Suggestion>> = _pendingInstallSuggestions
+
     val homeResetCounter: StateFlow<Int> = _homeResetCounter
+    val firstLaunchCompleted: StateFlow<Boolean> = _firstLaunchCompleted
+    val hiddenApps: StateFlow<Set<String>> = _hiddenApps
+    val tempHiddenApps: StateFlow<Map<String, Long>> = _tempHiddenApps
 
     init {
         try {
-            refreshApps()
-            refreshIconPacks()
-            packageChangeReceiver.register(getApplication())
-            refreshSystemStatus()
+            // ── Phase 1: Optimistic restore from persistent disk cache ─────────
+            // This is the critical path for process-death recovery. When Android
+            // kills the launcher process, the in-memory AppListCache is lost.
+            // The persistent cache survives process death and restores the app
+            // list in ~50ms, letting the UI render instantly.
+            viewModelScope.launch {
+                val cachedApps = persistentAppCache.read()
+                if (!cachedApps.isNullOrEmpty()) {
+                    _allApps.value = cachedApps
+                    _isLoading.value = false
+                    // Also warm the in-memory cache for this process lifetime.
+                    appListCache.update(cachedApps)
+                } else if (appListCache.isFresh()) {
+                    // Fallback: in-memory cache survived (e.g. config change).
+                    _allApps.value = appListCache.lastApps
+                    _isLoading.value = false
+                }
+
+                // Always refresh in background to detect newly installed/removed
+                // apps. If we restored from cache, this is silent (no spinner).
+                refreshApps(silent = _allApps.value.isNotEmpty())
+            }
+
+            // Load hidden apps state and clean expired temp entries.
+            viewModelScope.launch {
+                _hiddenApps.value = settingsManager.hiddenApps.first()
+                val now = System.currentTimeMillis()
+                val temp = settingsManager.tempHiddenApps.first()
+                val expired = temp.filter { it.value <= now }.keys
+                expired.forEach { settingsManager.clearTempHidden(it) }
+                _tempHiddenApps.value = temp.filter { it.value > now }
+            }
+
+            // Defer non-critical startup work so the main thread is free for
+            // Compose's first frame.
+            viewModelScope.launch {
+                refreshSystemStatus()
+                refreshIconPacks()
+                packageChangeReceiver.register(getApplication())
+            }
 
             viewModelScope.launch {
+                val completed = settingsManager.firstLaunchCompleted.first()
+                _firstLaunchCompleted.value = completed
+            }
+
+            // Defer product-tour check until the UI has settled.
+            viewModelScope.launch {
                 _isLoading.first { !it }
+                kotlinx.coroutines.delay(500)
                 val isCompleted = checkProductTourStatusUseCase().first()
                 if (!isCompleted) {
                     startProductTour()
@@ -326,27 +472,65 @@ class LauncherViewModel(
 
     // ── Refresh methods ──────────────────────────────────────────────────────
 
-    fun refreshApps() {
+    fun refreshApps(silent: Boolean = false) {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
+                if (!silent) _isLoading.value = true
                 val selectedPack = settingsManager.selectedIconPack.first()
                 val (_, fullApps) = loadAppsUseCase(selectedPack)
                 val respectedCategories = AppCategory.FIXED.toSet() + AppCategory.AI_EXCLUDED
-                _allApps.value = fullApps.map { app ->
-                    if (app.category in respectedCategories) app
-                    else app.copy(category = AppCategory.ALL)
-                }
-                categoryCache.purge(_allApps.value.map { it.packageName to it.versionCode })
 
-                // Detect newly installed uncategorized apps and suggest categories
-                val suggestionResult = suggestAppOrganizationUseCase(_allApps.value)
-                _pendingInstallSuggestions.value = suggestionResult.suggestions
+                // Do all categorisation and sorting on Default dispatcher so the
+                // main thread is never blocked by heavy list operations.
+                val processedApps = withContext(Dispatchers.Default) {
+                    fullApps
+                        .map { app ->
+                            if (app.category in respectedCategories) app
+                            else app.copy(category = AppCategory.ALL)
+                        }
+                        .sortedBy { it.label.lowercase() }
+                }
+
+            // Single emission: avoids the double-recomposition cascade that
+            // happened when metadata was emitted first and full apps later.
+            _allApps.value = processedApps
+            appListCache.update(processedApps)
+
+            // Persist to disk so the next process-death recovery is instant.
+            // This is best-effort: if the write fails, the next startup will
+            // just fall back to querying PackageManager.
+            persistentAppCache.write(processedApps)
+
+            if (!silent) _isLoading.value = false
+
+                if (!_firstLaunchCompleted.value) {
+                    settingsManager.setFirstLaunchCompleted(true)
+                    _firstLaunchCompleted.value = true
+                }
+
+                // Deferred low-priority work: organisation suggestions and cache
+                // housekeeping do not need to block the startup path.
+                viewModelScope.launch(Dispatchers.Default) {
+                    categoryCache.purge(processedApps.map { it.packageName to it.versionCode })
+                    try {
+                        val overrides = settingsManager.categoryOverrides.first()
+                        val suggestionResult = suggestAppOrganizationUseCase(processedApps)
+                        val newSuggestions = suggestionResult.suggestions.filter { suggestion ->
+                            val personalKey = "personal:${suggestion.packageName}"
+                            val workKey = "work:${suggestion.packageName}"
+                            overrides[personalKey] == null && overrides[workKey] == null
+                        }
+                        _pendingInstallSuggestions.value = newSuggestions
+                    } catch (_: Exception) {
+                        // Silently ignore suggestion failures during startup.
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _allApps.value = emptyList()
-            } finally {
-                _isLoading.value = false
+                if (_allApps.value.isEmpty()) {
+                    _allApps.value = emptyList()
+                }
+                if (!silent) _isLoading.value = false
             }
         }
     }
@@ -375,6 +559,30 @@ class LauncherViewModel(
     // ── User actions ─────────────────────────────────────────────────────────
 
     fun setSearchQuery(query: String) { _searchQuery.value = query }
+
+    fun hideApp(packageName: String) {
+        viewModelScope.launch {
+            settingsManager.setAppHidden(packageName, true)
+            _hiddenApps.value = _hiddenApps.value + packageName
+        }
+    }
+
+    fun unhideApp(packageName: String) {
+        viewModelScope.launch {
+            settingsManager.setAppHidden(packageName, false)
+            settingsManager.clearTempHidden(packageName)
+            _hiddenApps.value = _hiddenApps.value - packageName
+            _tempHiddenApps.value = _tempHiddenApps.value - packageName
+        }
+    }
+
+    fun tempHideApp(packageName: String, durationMinutes: Int) {
+        viewModelScope.launch {
+            val until = System.currentTimeMillis() + durationMinutes * 60_000L
+            settingsManager.setTempHidden(packageName, until)
+            _tempHiddenApps.value = _tempHiddenApps.value + (packageName to until)
+        }
+    }
 
     fun setActiveCategory(category: String) {
         _activeCategory.value = category
@@ -676,6 +884,8 @@ class LauncherViewModel(
                 uninstallAppUseCase = container.uninstallAppUseCase,
                 suggestAppOrganizationUseCase = container.suggestAppOrganizationUseCase,
                 categoryCache = container.categoryCache,
+                appListCache = container.appListCache,
+                persistentAppCache = container.persistentAppCache,
                 checkProductTourStatusUseCase = container.checkProductTourStatusUseCase,
                 dismissProductTourUseCase = container.dismissProductTourUseCase,
             ) as T

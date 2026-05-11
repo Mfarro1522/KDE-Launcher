@@ -140,10 +140,7 @@ internal object LauncherUiStateMapper {
 
     fun map(
         input: LauncherUiProjectionInput,
-        appContent: LauncherAppContentState,
-        organizationSuggestionState: OrganizationSuggestionState,
-        pendingInstallSuggestions: List<dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase.Suggestion>,
-        tourState: dev.vive.kdelauncher.ui.tour.TourState
+        appContent: LauncherAppContentState
     ): LauncherUiState {
         return LauncherUiState(
             allApps = appContent.allApps,
@@ -167,10 +164,7 @@ internal object LauncherUiStateMapper {
             isLoadingIconPacks = input.settingsIcon.isLoadingIconPacks,
             isDefaultLauncher = input.system.isDefaultLauncher,
             hasRealWorkProfile = input.system.hasRealWorkProfile,
-            isWorkProfileLocked = input.system.isWorkProfileLocked,
-            organizationSuggestionState = organizationSuggestionState,
-            pendingInstallSuggestions = pendingInstallSuggestions,
-            tourState = tourState
+            isWorkProfileLocked = input.system.isWorkProfileLocked
         )
     }
 

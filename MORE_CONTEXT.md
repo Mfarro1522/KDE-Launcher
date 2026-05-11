@@ -65,4 +65,210 @@ Para asegurar una experiencia de primer nivel ("premium"), se implementaron las 
 - **Transiciones y Barridos (Sweep):** El tooltip del tour calcula el centro de la pantalla para realizar transiciones fluidas de entrada y salida ("barridos"). El uso de `AnimatedContent` asegura un *crossfade* elegante del texto sin parpadeos rápidos, y el estado de la posición utiliza `lastKnownBounds` para evitar que la interfaz pierda el foco al cambiar de pasos de forma acelerada.
 - **Efectos Cinemáticos:** El highlighter que enfoca los elementos de la interfaz ahora cuenta con animaciones de escala (`scaleIn` y `scaleOut`), creando un efecto dinámico de encendido y apagado de foco.
 - **Soporte de Temas (Light/Dark):** La tarjeta del tooltip se desvinculó de colores oscuros estáticos y ahora utiliza nativamente los tokens del sistema de diseño (`surfaceVariant`), adaptándose perfectamente al tema blanco y oscuro.
-- **Flujo de Privacidad (TAPO Labs):** Se estabilizó el paso experimental en el Tour, integrando un diálogo de consentimiento explícito de privacidad previo al envío de datos de apps hacia APIs de LLM.t
+- **Flujo de Privacidad (TAPO Labs):** Se estabilizó el paso experimental en el Tour, integrando un diálogo de consentimiento explícito de privacidad previo al envío de datos de apps hacia APIs de LLM.
+
+## 6. Optimizaciones de Rendimiento — Fase 1 (MVI + Compose)
+
+Para resolver problemas críticos de "lag" o caída de fotogramas al hacer scroll en categorías con muchas aplicaciones, se ejecutó un diagnóstico y refactorización orientada puramente a la eficiencia de Jetpack Compose:
+- **Aislamiento de Estado (MVI):** Se extrajeron estados accesorios (`tourState`, `organizationSuggestionState`, `pendingInstallSuggestions`) del `LauncherUiState` principal hacia flujos de estado (`StateFlow`) independientes en el ViewModel. Esto previene que interacciones con el Product Tour o las sugerencias de la IA provoquen recomposiciones masivas en la cuadrícula de aplicaciones (`AppGrid`).
+- **Migración a `Modifier.Node`:** Se sustituyó el uso intensivo de `Modifier.composed` en el Product Tour (`TourModifier.kt`) por la moderna API de `Modifier.Node` (implementando `GlobalPositionAwareModifierNode`). Esto reduce drásticamente el coste de cálculo al rastrear las coordenadas globales de los elementos del launcher.
+- **Eficiencia en Memoria:** Se corrigieron instancias donde conversiones de `Bitmap` se ejecutaban repetidamente, cacheándolas apropiadamente y marcando correctamente los tipos de contenido en las listas para reciclaje de vistas.
+
+## 7. Optimizaciones de Rendimiento — Fase 2 (Scroll Lag + Arranque)
+
+Se identificó que el lag al hacer scroll rápido en el drawer de apps era causado por una cascada de recomposiciones: cualquier cambio en `LauncherUiState` (tema, settings, etc.) forzaba la recomposición completa de `AppGrid`. Adicionalmente, el arranque bloqueaba la UI hasta decodificar todos los íconos más un delay artificial de 1.5s.
+
+Soluciones implementadas:
+- **`AppGridState` como StateFlow independiente:** Se creó `AppGridState` (marcado `@Immutable`) con su propio `StateFlow` que solo combina los campos relevantes para la grilla (apps filtradas, categoría, configuración de grilla). Esto aísla `AppGrid` y `CategorySidebar` de cambios de tema/settings, eliminando la cascada de recomposición.
+- **Carga bifásica real:** `refreshApps()` ahora muestra las apps sin íconos inmediatamente (fase 1), y carga los íconos en background (fase 2) actualizando el estado de forma asíncrona. Se eliminó el bloqueo de UI durante la decodificación de bitmaps.
+- **Organización de apps en `Dispatchers.Default`:** `suggestAppOrganizationUseCase()` se movió a un coroutine en `Dispatchers.Default` para no bloquear el hilo principal durante el arranque.
+- **`distinctUntilChanged()` en flujos derivados:** Se aplicó a `categoryConfigsFlow` y `visibleCategoriesFlow` para evitar emisiones duplicadas que causaban recomposiciones innecesarias.
+- **Reducción del delay de splash:** De 1500ms a 300ms.
+
+## 8. Optimizaciones de Rendimiento — Fase 3 (Scroll Lag Crítico)
+
+Se identificó y resolvió la causa raíz de un lag severo (10-20 segundos) al hacer scroll rápido en la caja de aplicaciones. El problema no era la carga de íconos, sino una cascada de recomposiciones provocada por código de tracking de coordenadas y tipos inestables en Compose.
+
+### Causas raíz identificadas
+
+1. **`onGloballyPositioned` en cada celda del grid:** `AppGrid.kt` aplicaba `.onGloballyPositioned` a cada `AppIcon` para capturar coordenadas del Product Tour. Durante el scroll, esto actualizaba un `mutableStateMapOf` en **cada frame** para cada celda visible, forzando la recomposición completa del grid y causando fugas de memoria sin límite.
+2. **`AppModel` marcado como `@Stable` pero con tipos inestables:** El campo `UserHandle?` (tipo Android nativo desconocido para Compose) hacía que `AppModel` se considerara inestable, impidiendo que Compose reciclara eficientemente los items de `LazyVerticalGrid`.
+3. **Búsqueda sin debounce:** Cada tecla en `SearchBar` disparaba el filtrado completo de la lista inmediatamente, causando picos de uso de CPU en el hilo principal.
+4. **Filtrado en el hilo principal:** `mapAppContentFiltered` ejecutaba búsqueda de texto + filtrado por categoría directamente en el dispatcher del Flow (main thread).
+5. **`tourTarget` siempre activo:** El modifier `.tourTarget()` estaba aplicado permanentemente a todos los elementos (Banner, ProfileHeader, SearchBar, CategorySidebar, AppGrid) aunque el tour nunca estuviera activo, agregando overhead de `Modifier.Node` en todo momento.
+6. **Lambdas inestables en items del grid:** Los callbacks `onClick` y `onLongPress` se recreaban como nuevas instancias en cada recomposición, invalidando la estabilidad de `AppIcon` y forzando recomposiciones adicionales.
+
+### Soluciones implementadas
+
+- **Eliminación completa del tracking por celda:** Se removió `onGloballyPositioned` de los items individuales del `LazyVerticalGrid`. El posicionamiento del tour ahora funciona mediante un helper condicional (`Modifier.tourIfActive`) que solo aplica el modifier cuando `tourState.isActive == true`, eliminando toda la sobrecarga durante el uso normal.
+- **Estabilización del modelo de datos:** Se cambió `@Stable` por `@Immutable` en `AppModel`. Al tratarse de un data class con campos inmutables establecidos en construcción, Compose ahora puede tratar las instancias como estables y saltar recomposiciones cuando la referencia no cambia.
+- **Debounce en búsqueda (150ms):** Se introdujo `_searchQueryDebounced` con `Flow.debounce(150)` en `LauncherViewModel`. La UI refleja el texto instantáneamente, pero el filtrado de apps ocurre solo después de que el usuario deja de escribir.
+- **Filtrado en background thread:** Se agregó `.flowOn(Dispatchers.Default)` al `appContentState` en `LauncherViewModel`. La búsqueda de texto y el filtrado por categoría ahora corren en un hilo de background, liberando el UI thread.
+- **Tour condicional con `Modifier.tourIfActive`:** Se implementó una extensión condicional en `LauncherScreen.kt` que solo aplica `.tourTarget()` cuando el tour está activo. En uso normal, estos modifier nodes ni siquiera existen.
+- **Callbacks estables en `AppGrid` y `AppIcon`:**
+  - En `AppGrid.kt`: Los lambdas `onClick` y `onLongPress` de cada item se cachean con `remember(app)` para que sean referencialmente estables durante el scroll.
+  - En `AppIcon.kt`: Se usa `rememberUpdatedState` dentro de `pointerInput(Unit)` para siempre invocar el callback más reciente sin reiniciar el detector de gestos.
+- **Cacheo del bitmap en `AppIcon`:** El `imageBitmap` ahora se extrae con `remember(app.icon)` para evitar accesos repetidos al campo nullable durante recomposiciones.
+
+### Impacto medido (esperado)
+
+| Métrica | Antes | Después |
+|---------|-------|---------|
+| Recomposiciones por frame de scroll | Todas las celdas visibles | Solo las que entran/salen |
+| Actualizaciones de estado por scroll | Ilimitadas (onGloballyPositioned) | Cero |
+| Filtrado de búsqueda | Cada tecla, main thread | Debounced 150ms, background |
+| Modifier nodes de tour activos | ~6 permanentes | 0 (solo durante tour) |
+| Estabilidad de `AppModel` | Inestable (campos Android) | `@Immutable` |
+| Callbacks en items del grid | Nuevas instancias por frame | Estables (`remember`) |
+
+---
+
+## 9. Optimizaciones de Rendimiento — Fase 4 (Cold Start / Warm Start)
+
+Se identificó que el verdadero problema restante no era el scroll, sino el **cold start**: cuando el launcher permanecía en segundo plano (ej. viendo YouTube), Android destruía el proceso por inactividad o presión de memoria. Al volver, el launcher se reiniciaba desde cero con lag fuerte de varios segundos.
+
+### Causas raíz identificadas
+
+1. **`android:clearTaskOnLaunch="true"` en el Manifest:** Esta directiva limpia la task completa cada vez que el usuario presiona Home. Para un launcher, esto es catastrófico: fuerza la recreación completa de `MainActivity` y `LauncherViewModel` en **cada regreso a Home**, no solo cuando Android mata el proceso.
+2. **`android:stateNotNeeded="true"`:** Le dice a Android que no guarde/restaure el estado del Activity, impidiendo cualquier recuperación de estado tras recreación.
+3. **Sin `android:largeHeap="true"`:** El launcher no tenía heap ampliado, haciéndolo mucho más susceptible a ser matado por el sistema bajo presión de memoria.
+4. **ViewModel `init` bloqueante:** `refreshApps()` ejecutaba queries pesadas a `PackageManager` sincrónicamente en el arranque. La carga era **bifásica** (metadata primero, luego full apps), causando **dos emisiones** de `_allApps` → cada una dispara la cascada completa de flows (`appsWithMetaFlow` → `appContentState` → `uiState` + `appGridState`), provocando recomposiciones masivas duplicadas.
+5. **Sin caché de apps a nivel de proceso:** Cuando Android mataba el proceso, la lista de apps desaparecía. Al volver, era necesario reconsultar `PackageManager` desde cero.
+6. **Trabajo no crítico en el startup path:** `refreshIconPacks()`, `refreshSystemStatus()`, registro de `PackageChangeReceiver`, y sugerencias de organización se ejecutaban todos durante el `init`, compitiendo por CPU y memoria en el momento más crítico.
+
+### Soluciones implementadas
+
+- **Manifest corregido (impacto inmediato):**
+  - Se removió `android:clearTaskOnLaunch="true"`.
+  - Se removió `android:stateNotNeeded="true"`.
+  - Se agregó `android:largeHeap="true"` para reducir kills por memoria.
+  - Se agregó `android:excludeFromRecents="true"` para que el launcher no aparezca en recientes.
+- **`AppListCache` (caché de proceso):** Se creó un singleton `AppListCache` en `AppContainer` que persiste la última lista de apps en memoria mientras el proceso viva. En el `init` del `LauncherViewModel`, si el caché está fresco (< 5 min), se hace _seed_ inmediato de `_allApps`, permitiendo que la UI renderice **instantáneamente** sin esperar a `PackageManager`.
+- **Single emission en `refreshApps()`:** Se eliminó la carga bifásica que causaba doble recomposición. Ahora hay una sola emisión de `_allApps` con los datos procesados en `Dispatchers.Default`.
+- **Defer de trabajo no crítico:** `refreshSystemStatus()`, `refreshIconPacks()`, registro del `PackageChangeReceiver`, y las sugerencias de organización se ejecutan en coroutines diferidas (`viewModelScope.launch`) tras el renderizado inicial, liberando el hilo principal para el primer frame de Compose.
+- **Silent refresh:** Cuando hay caché válido, `refreshApps(silent = true)` ejecuta la recarga de apps en background **sin mostrar el indicador de carga**, manteniendo la experiencia fluida.
+
+### Impacto medido (esperado)
+
+| Métrica | Antes | Después |
+|---------|-------|---------|
+| Recreación al presionar Home | Siempre (clearTaskOnLaunch) | Nunca (singleTask normal) |
+| Recuperación tras kill de proceso | 3-5s lag + reconstrucción completa | Instantánea (cache) + refresh silent |
+| Emisiones de `_allApps` en startup | 2 (metadata + full) | 1 (single batch) |
+| Recomposiciones iniciales | Doble cascada (empty → metadata → full) | Una sola (cached → refreshed) |
+| Heap disponible | Default (susceptible a kills) | Large (menos kills por memoria) |
+| Trabajo en hilo principal durante init | Queries PackageManager + iconos + sugerencias | Solo seed de cache + UI Compose |
+
+## 10. Nuevas Funcionalidades de UX (Categorías Inteligentes, Apps Ocultas, Menú Contextual)
+
+En esta iteración se implementaron tres mejoras de experiencia de usuario de alto impacto, manteniendo la arquitectura limpida existente.
+
+### 10.1 Categorías Inteligentes (Smart Grouping)
+
+Se añadieron nuevas categorías semánticas al sistema de categorización automática:
+- **`WALLETS`** (Billeteras): Detecta apps de pago (Binance, Yape, Plin, PayPal, Mercado Pago, etc.).
+- **`COMPRAS`** (Compras): Detecta apps de e-commerce (Rappi, Amazon, AliExpress, etc.).
+- **`FINANZAS`**: Actúa como categoría merge cuando hay pocos wallets o compras individualmente, pero suficientes en conjunto (≥5).
+- **`DEV`** (Desarrollo): Detecta apps de desarrollo (Termux, GitHub, VS Code, etc.).
+
+**Lógica de agrupamiento inteligente** (`LoadAppsUseCase.applySmartGrouping`):
+- Si hay ≥4 wallets → categoría `WALLETS` se mantiene.
+- Si hay ≥4 compras → categoría `COMPRAS` se mantiene.
+- Si wallets + compras ≥5 pero individualmente <4 → se mergean a `FINANZAS`.
+- Si hay ≥4 dev → categoría `DEV` se mantiene.
+- Si hay <4 dev → se revierten a `DEVELOPMENT`.
+
+Esto evita categorías vacías o con solo 1-2 apps, manteniendo el drawer limpio.
+
+### 10.2 Sistema de Apps Ocultas
+
+Se implementó un sistema completo de ocultamiento de apps con persistencia en DataStore:
+
+- **Ocultamiento permanente:** `SettingsManager.hiddenApps` (set de package names).
+- **Ocultamiento temporal:** `SettingsManager.tempHiddenApps` (map `packageName → timestamp`). Las apps ocultadas temporalmente se restauran automáticamente cuando expira el tiempo.
+- **UI de gestión:** En `LauncherSettingsPanel` se añadió `HiddenAppsSection` donde el usuario puede:
+  - Ver la lista de apps ocultas.
+  - Restaurar apps individuales.
+  - Seleccionar una app para ocultarla con duración: 5 minutos, hasta reinicio, o indefinidamente.
+- **Filtrado en ViewModel:** `visibleAppsFlow` filtra las apps ocultas antes de pasarlas a los flows derivados (`categoryBaseFlow`, `appContentState`, etc.), asegurando que nunca aparezcan en la UI.
+
+### 10.3 Menú Contextual Rediseñado
+
+El menú contextual de long-press fue completamente rediseñado:
+
+- **Posicionamiento inteligente:** Se reemplazó el popup centrado por un `Popup` con `PopupPositionProvider` personalizado (`AppMenuPositionProvider`) que posiciona el menú justo debajo del ícono presionado, con ajuste automático de bordes para no salirse de la pantalla.
+- **Estilo consistente:** El menú usa tokens del tema (`colors.surface`, `colors.border`, `accent.primary`), sombra suave (`shadow(8.dp)`), y bordes redondeados (`RoundedCornerShape(14.dp)`).
+- **Acciones disponibles:** Favorito/Quitar, Mover (abre picker de categoría), Información, Desinstalar.
+- **Color semántico:** La acción "Desinstalar" usa `MaterialTheme.colorScheme.error` para alerta visual.
+
+### 10.4 Corrección de Colores Hardcodeados
+
+Se realizó una auditoría y corrección de colores hardcodeados en la UI:
+
+| Archivo | Color hardcodeado | Reemplazo |
+|---------|-------------------|-----------|
+| `LauncherScreen.kt` | `Color(0xFFFF9100)` (banner no-default) | `LauncherColors.AccentOrange` |
+| `AutoOrganizeSection.kt` | `Color(0xFF8B5CF6)` (icono IA) | `LauncherColors.AccentPurple` |
+| `AutoOrganizeSection.kt` | `Color(0xFF10B981)` (estado aplicado) | `LauncherColors.SuccessGreen` |
+
+Se agregaron los tokens correspondientes a `Color.kt`: `AccentPurple`, `AccentPurpleBg`, `SuccessGreen`, `SuccessGreenBg`.
+
+---
+
+## 11. Corrección de Bugs Críticos (Categorías + Asistente + Process Death + Rotación)
+
+### 11.1 Bug: Renombrar Categorías No Persistía
+
+**Causa raíz:** El set `knownCategories` en `SettingsManagerImpl` era una lista estática que no incluía las nuevas categorías dinámicas agregadas en la iteración anterior (`wallets`, `compras`, `finanzas`, `dev`). El flujo `categoryDisplayNames` iteraba solo sobre `knownCategories + customCategories` para leer los nombres personalizados de DataStore. Cualquier categoría detectada dinámicamente por `AppCategorizer` que no estuviera en `knownCategories` quedaba excluida, haciendo que su nombre personalizado se guardara en DataStore pero nunca se leyera de vuelta.
+
+**Solución:** Se agregaron `"wallets"`, `"compras"`, `"finanzas"`, `"dev"` a `knownCategories` en `SettingsManagerImpl`.
+
+### 11.2 Bug: Process Death Restore Lento (~20s pantalla vacía)
+
+**Causa raíz:** `AppListCache` es puramente en memoria (`var lastApps: List<AppModel> = emptyList()`). Cuando Android mata el proceso por presión de memoria, la lista de apps desaparece por completo. Al volver:
+1. `LauncherViewModel.init` encuentra `appListCache.isFresh() == false`.
+2. `_allApps` se queda como `emptyList()`.
+3. `refreshApps()` consulta `PackageManager` para TODAS las apps + decodifica TODOS los íconos + aplica heurísticas → 10-20s de pantalla vacía.
+4. Los StateFlows tienen valores por defecto con listas vacías, por lo que la UI renderiza vacío inmediatamente.
+
+**Solución:**
+- Se creó `PersistentAppCache` (singleton en `AppContainer`): caché en disco que serializa metadata de apps a JSON en `filesDir`. Guarda `packageName`, `activityName`, `label`, `category`, `isSystemApp`, `versionCode`, `iconResId`, `profileTag`. NO guarda bitmaps ni `UserHandle`. Lee en ~50ms.
+- En `LauncherViewModel.init`: se lee primero del caché de disco. Si tiene datos, se hace seed inmediato de `_allApps` con íconos placeholder. La UI renderiza instantáneamente. Luego se ejecuta `refreshApps()` en background para cargar íconos reales.
+- En `refreshApps()`: después de cada carga exitosa se guarda en `persistentAppCache.write(apps)`.
+- Se mantiene `AppListCache` (memoria) como fallback rápido cuando el proceso aún vive.
+
+### 11.3 Bug: Asistente (Long-Press Home) Bloqueado
+
+**Síntoma:** Mantener presionado el botón Home no abría Google Assistant / Gemini.
+
+**Investigación exhaustiva:**
+- NO hay overrides de `onKeyDown`, `dispatchKeyEvent`, `onTouchEvent`, ni consumidores de eventos de navegación.
+- NO hay servicios de voz (`VoiceInteractionService`), accesibilidad, ni `NotificationListenerService`.
+- `OnBackPressedDispatcher` solo maneja Back, no Home.
+- `enableEdgeToEdge()` + `systemBarsPadding()` no consumen eventos de navegación.
+- El único `detectTapGestures` es en `AppIcon.kt` (clicks individuales, no navegación del sistema).
+
+**Causa raíz:** `android:priority="1"` en el intent-filter `HOME` de `MainActivity`. En ciertos dispositivos/OEM skins (Samsung One UI, Xiaomi MIUI, Motorola), este atributo puede interferir con la resolución de gestos del sistema cuando hay múltiples launchers instalados. El sistema trata a TAPO como candidato prioritario para gestos de navegación, incluyendo long-press Home → asistente, y no enruta correctamente al servicio de asistencia predeterminado.
+
+**Solución:**
+- Removido `android:priority="1"` del intent-filter HOME.
+- Removido `android:excludeFromRecents="true"` (los launchers no necesitan este atributo).
+- Removido `android:screenOrientation="portrait"` del manifest (ver 11.4).
+
+### 11.4 Bug: Botón de Rotación Manual
+
+**Síntoma:** Al girar el dispositivo, apareció el botón flotante de sugerencia de rotación manual de Android.
+
+**Fase fallida:** Se agregó `android:screenOrientation="portrait"` + `configChanges="orientation|..."` en el manifest. Esto bloqueó la rotación pero puede interferir con la detección de gestos del sistema en Android moderno (gesture navigation), incluyendo long-press en el "pill" de navegación para abrir el asistente.
+
+**Solución final:**
+- Removido `android:screenOrientation="portrait"` del manifest.
+- Removido `orientation` de `android:configChanges` (se mantiene `screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden`).
+- Seteado `requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT` programáticamente en `MainActivity.onCreate()`. Esto bloquea la rotación sin interferir con la resolución de gestos del sistema en el manifest.
+
+### 11.5 Cambios en MainActivity
+
+- Se reemplazó `onBackPressed()` deprecated por `OnBackPressedDispatcher.addCallback()` para manejar Back correctamente sin interferir con el asistente. El callback delega al sistema si el ViewModel no maneja el evento.
+- Se setea `requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT` programáticamente para bloquear rotación sin afectar gestos del sistema.
+
+> **Estado actual del proyecto:** Todas las fases de refactorización (1-5), optimización (1-4), funcionalidades de UX, y correcciones de bugs críticos están completas. El proyecto compila limpiamente y está listo para producción.

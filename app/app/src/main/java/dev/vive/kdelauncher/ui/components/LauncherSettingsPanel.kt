@@ -96,6 +96,11 @@ fun LauncherSettingsPanel(
     onSuggestOrganization: () -> Unit,
     onApplyOrganizationSuggestions: (List<dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase.Suggestion>) -> Unit,
     onCancelOrganization: () -> Unit,
+    hiddenApps: Set<String> = emptySet(),
+    tempHiddenApps: Map<String, Long> = emptyMap(),
+    allApps: List<dev.vive.kdelauncher.data.model.AppModel> = emptyList(),
+    onHideApp: (dev.vive.kdelauncher.data.model.AppModel, Int) -> Unit = { _, _ -> },
+    onUnhideApp: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
@@ -667,6 +672,18 @@ fun LauncherSettingsPanel(
         // ── Divider ──────────────────────────────────────
         HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
 
+        // ── Hidden Apps Manager ──────────────────────────
+        HiddenAppsSection(
+            hiddenApps = hiddenApps,
+            tempHiddenApps = tempHiddenApps,
+            allApps = allApps,
+            onHideApp = onHideApp,
+            onUnhideApp = onUnhideApp,
+        )
+
+        // ── Divider ──────────────────────────────────────
+        HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
+
         // ── Icon Pack Selector ───────────────────────────
         SectionLabel("Pack de íconos")
 
@@ -1133,6 +1150,246 @@ private fun CategorySettingsRow(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
+}
+
+// ── Hidden Apps Section ───────────────────────────────────────
+@Composable
+private fun HiddenAppsSection(
+    hiddenApps: Set<String>,
+    tempHiddenApps: Map<String, Long>,
+    allApps: List<dev.vive.kdelauncher.data.model.AppModel>,
+    onHideApp: (dev.vive.kdelauncher.data.model.AppModel, Int) -> Unit,
+    onUnhideApp: (String) -> Unit,
+) {
+    val colors = LocalColors.current
+    val accent = LocalLauncherAccent.current
+    var expanded by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    var selectedApp by remember { mutableStateOf<dev.vive.kdelauncher.data.model.AppModel?>(null) }
+    var showConfirm by remember { mutableStateOf(false) }
+
+    val allHidden = hiddenApps + tempHiddenApps.keys
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel("Apps ocultas")
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { expanded = !expanded }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accent.primaryBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.VisibilityOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = accent.primary
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Administrar apps ocultas",
+                        style = LauncherTypography.bodyMedium,
+                        color = colors.onBackground
+                    )
+                    Text(
+                        text = "${allHidden.size} app${if (allHidden.size == 1) "" else "s"} oculta${if (allHidden.size == 1) "" else "s"}",
+                        style = LauncherTypography.bodySmall,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = colors.onSurfaceVariant
+            )
+        }
+
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (allHidden.isNotEmpty()) {
+                    allHidden.forEach { pkg ->
+                        val app = allApps.find { it.packageName == pkg }
+                        val isTemp = pkg in tempHiddenApps
+                        val until = tempHiddenApps[pkg]
+                        val timeLeft = if (until != null) {
+                            val mins = ((until - System.currentTimeMillis()) / 60_000).toInt()
+                            if (mins > 0) "$mins min" else "Expira pronto"
+                        } else null
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surfaceVariant.copy(alpha = 0.3f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = app?.label ?: pkg,
+                                style = LauncherTypography.bodyMedium,
+                                color = colors.onBackground,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (timeLeft != null) {
+                                Text(
+                                    text = timeLeft,
+                                    style = LauncherTypography.bodySmall,
+                                    color = accent.primary
+                                )
+                            }
+                            TextButton(
+                                onClick = { onUnhideApp(pkg) },
+                                modifier = Modifier.heightIn(min = 28.dp)
+                            ) {
+                                Text("Restaurar", color = accent.primary, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "No hay apps ocultas",
+                        style = LauncherTypography.bodySmall,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { showPicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Rounded.Add, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Ocultar app")
+                }
+            }
+        }
+    }
+
+    if (showPicker) {
+        val available = allApps.filter { it.packageName !in allHidden }
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            title = { Text("Seleccionar app para ocultar") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (available.isEmpty()) {
+                        Text("No hay apps disponibles para ocultar", style = LauncherTypography.bodySmall)
+                    } else {
+                        available.forEach { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(colors.surfaceVariant.copy(alpha = 0.35f))
+                                    .clickable {
+                                        selectedApp = app
+                                        showPicker = false
+                                        showConfirm = true
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Android,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = colors.onSurfaceVariant
+                                )
+                                Text(
+                                    text = app.label,
+                                    style = LauncherTypography.bodyMedium,
+                                    color = colors.onBackground
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (showConfirm && selectedApp != null) {
+        val app = selectedApp!!
+        AlertDialog(
+            onDismissRequest = { showConfirm = false; selectedApp = null },
+            title = { Text("¿Ocultar ${app.label}?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Selecciona duración:", style = LauncherTypography.bodySmall)
+                    listOf(
+                        5 to "5 minutos",
+                        -1 to "Hasta reinicio",
+                        0 to "Indefinidamente"
+                    ).forEach { (minutes, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surfaceVariant.copy(alpha = 0.35f))
+                                .clickable {
+                                    onHideApp(app, minutes)
+                                    showConfirm = false
+                                    selectedApp = null
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.VisibilityOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = accent.primary
+                            )
+                            Text(
+                                text = label,
+                                style = LauncherTypography.bodyMedium,
+                                color = colors.onBackground
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false; selectedApp = null }) {
+                    Text("Cancelar")
+                }
             }
         )
     }

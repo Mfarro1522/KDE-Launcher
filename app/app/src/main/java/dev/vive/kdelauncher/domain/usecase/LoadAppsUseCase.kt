@@ -42,7 +42,7 @@ class LoadAppsUseCase(
             } else emptyList()
 
             val mergedApps = mergeApps(personalMeta, workMeta)
-            val metadataApps = applyMultimediaGrouping(mergedApps)
+            val metadataApps = applySmartGrouping(applyMultimediaGrouping(mergedApps))
 
             val iconsByKey = withContext(Dispatchers.IO) {
                 val personalDeferreds = personalMeta.map { app ->
@@ -80,6 +80,10 @@ class LoadAppsUseCase(
                 val bitmap = iconsByKey[key]
                 if (bitmap != null) app.copy(icon = AppIconBitmap(bitmap)) else app
             }
+
+            // Pre-warm ImageBitmap lazy property on IO thread to avoid
+            // first-frame jank when Compose reads it during composition.
+            fullApps.forEach { it.icon?.imageBitmap }
 
             metadataApps to fullApps
         }
@@ -132,6 +136,44 @@ class LoadAppsUseCase(
                 ) {
                     app.copy(category = "media")
                 } else app
+            }
+        }
+    }
+
+    /**
+     * Apply smart grouping for wallets, shopping and dev categories:
+     * - Wallets >= 4 → keep "wallets"
+     * - Compras >= 4 → keep "compras"
+     * - Neither >= 4 but combined >= 5 → merge into "finanzas"
+     * - Dev >= 4 → keep "dev"
+     * - Dev < 4 → revert to "development"
+     */
+    private fun applySmartGrouping(apps: List<AppModel>): List<AppModel> {
+        val walletsCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.WALLETS }
+        val comprasCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.COMPRAS }
+        val devCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.DEV }
+
+        val hasEnoughWallets = walletsCount >= 4
+        val hasEnoughCompras = comprasCount >= 4
+        val hasEnoughDev = devCount >= 4
+        val shouldMergeFinanzas = !hasEnoughWallets && !hasEnoughCompras && (walletsCount + comprasCount) >= 5
+
+        return apps.map { app ->
+            when (app.category) {
+                dev.vive.kdelauncher.data.model.AppCategory.DEV -> {
+                    if (hasEnoughDev) app else app.copy(category = "development")
+                }
+                dev.vive.kdelauncher.data.model.AppCategory.WALLETS -> {
+                    if (hasEnoughWallets) app
+                    else if (shouldMergeFinanzas) app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.FINANZAS)
+                    else app.copy(category = "finance")
+                }
+                dev.vive.kdelauncher.data.model.AppCategory.COMPRAS -> {
+                    if (hasEnoughCompras) app
+                    else if (shouldMergeFinanzas) app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.FINANZAS)
+                    else app.copy(category = "shopping")
+                }
+                else -> app
             }
         }
     }

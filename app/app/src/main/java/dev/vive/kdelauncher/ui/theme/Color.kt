@@ -44,6 +44,12 @@ object LauncherColors {
     val StatusOnline = Color(0xFF4CAF50)
     val StatusWork = Color(0xFFFF9100)
 
+    // ── Semantic ──
+    val AccentPurple = Color(0xFF8B5CF6)
+    val AccentPurpleBg = Color(0x268B5CF6)
+    val SuccessGreen = Color(0xFF10B981)
+    val SuccessGreenBg = Color(0x2610B981)
+
     // ── Utility ──
     val White5 = Color(0x0DFFFFFF)
     val White10 = Color(0x1AFFFFFF)

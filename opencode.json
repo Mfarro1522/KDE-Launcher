@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@warp-dot-dev/opencode-warp"],
+  "mcp": {
+    "exa": {
+      "type": "remote",
+      "url": "https://mcp.exa.ai/mcp",
+      "headers": {
+        "x-api-key": "$EXA_TOKEN"
+        },
+      "enabled": true
+    }
+  }
+}

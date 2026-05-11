@@ -87,7 +87,7 @@ class AndroidAppPlatformGateway(
                 ComponentName(packageName, activityName),
                 0
             )
-            activityInfo.loadIcon(context.packageManager)?.toBitmap(128, 128)
+            activityInfo.loadIcon(context.packageManager)?.toBitmap(96, 96)
         } catch (_: Exception) {
             null
         }

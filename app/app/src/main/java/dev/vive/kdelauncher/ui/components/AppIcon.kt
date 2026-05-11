@@ -11,12 +11,14 @@ import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -56,7 +58,15 @@ fun AppIcon(
 ) {
     val colors = LocalColors.current
     val isWork = app.profileTag == ProfileType.WORK
-    val imageBitmap = app.icon?.bitmap?.asImageBitmap()
+    val imageBitmap = remember(app.icon) { app.icon?.imageBitmap }
+    val dimensions = remember(iconSize) { getIconDimensions(iconSize) }
+    val containerSize = dimensions.first
+    val iconSizeDp = dimensions.second
+
+    // Use rememberUpdatedState so pointerInput (keyed by Unit) always calls
+    // the latest callbacks without restarting the gesture detector.
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
 
     Column(
         modifier = modifier
@@ -64,16 +74,14 @@ fun AppIcon(
             .clip(RoundedCornerShape(16.dp))
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongPress() }
+                    onTap = { currentOnClick() },
+                    onLongPress = { currentOnLongPress() }
                 )
             }
             .padding(horizontal = 4.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(if (showLabel) 6.dp else 4.dp)
     ) {
-        val (containerSize, iconSizeDp) = getIconDimensions(iconSize)
-
         Box(
             modifier = Modifier
                 .size(containerSize.dp)

@@ -16,23 +16,24 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.KDELauncher">
+        android:theme="@style/Theme.KDELauncher"
+        android:largeHeap="true">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:clearTaskOnLaunch="true"
-            android:stateNotNeeded="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
 
             <!--
-                HOME intent-filter: registers this app as a valid home screen / launcher.
-                Android will show the "Choose Home App" dialog when the user presses Home
-                if no default launcher is set, OR when the user manually changes it from
-                Settings → Apps → Default Apps → Home App.
+                Being a HOME-category launcher, the system navigates back to this
+                activity when the user presses Home.  "singleTask" ensures there
+                is only one instance of the launcher activity at any time.
+                No priority attribute — priority="1" can interfere with system
+                gesture resolution (assistant trigger, navigation) on some devices.
             -->
-            <intent-filter android:priority="1">
+            <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />

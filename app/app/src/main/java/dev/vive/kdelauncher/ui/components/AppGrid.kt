@@ -18,20 +18,31 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
 import dev.vive.kdelauncher.ui.theme.LauncherTypography
@@ -58,12 +69,16 @@ fun AppGrid(
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
+    val density = LocalDensity.current
     val config = categoryConfigs.find { it.category == activeCategory }
-    val categoryName = config?.displayName ?: AppCategory.displayName(activeCategory)
+    val categoryName = remember(config, activeCategory) {
+        config?.displayName ?: AppCategory.displayName(activeCategory)
+    }
 
     val gridState = rememberLazyGridState()
 
     var menuApp by remember { mutableStateOf<AppModel?>(null) }
+    var menuBounds by remember { mutableStateOf<Rect?>(null) }
     var showCategoryPicker by remember { mutableStateOf<AppModel?>(null) }
 
     val categoryOptions = remember(visibleCategories, categoryConfigs) {
@@ -75,6 +90,13 @@ fun AppGrid(
                 cat to name
             }
     }
+
+    val stableOnAppClick: (AppModel) -> Unit = remember(onAppClick) { onAppClick }
+    val stableOnLongPress: (AppModel) -> Unit = remember(onToggleFavorite) { onToggleFavorite }
+    val stableOnAssignCategory: (AppModel, String) -> Unit = remember(onAssignCategory) { onAssignCategory }
+    val stableOnClearCategory: (AppModel) -> Unit = remember(onClearCategory) { onClearCategory }
+    val stableOnAppInfo: (AppModel) -> Unit = remember(onAppInfo) { onAppInfo }
+    val stableOnUninstall: (AppModel) -> Unit = remember(onUninstall) { onUninstall }
 
     Column(
         modifier = modifier
@@ -134,165 +156,60 @@ fun AppGrid(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
             ) {
-                items(apps, key = { "${it.packageName}:${it.profileTag.name}" }) { app ->
-                    AppIcon(
-                        app = app,
-                        onClick = { onAppClick(app) },
-                        onLongPress = { menuApp = app },
-                        showLabel = showAppLabels,
-                        iconSize = iconSize,
-                        showIconBackground = showIconBackground
-                    )
+                items(
+                    apps,
+                    key = { "${it.packageName}:${it.profileTag.name}" },
+                    contentType = { "app_icon" }
+                ) { app ->
+                    val pressBounds = remember { mutableStateOf<Rect?>(null) }
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            pressBounds.value = coords.boundsInWindow()
+                        }
+                    ) {
+                        val onClick = remember(app) { { stableOnAppClick(app) } }
+                        val onLongPress = remember(app) {
+                            {
+                                menuApp = app
+                                menuBounds = pressBounds.value
+                            }
+                        }
+                        AppIcon(
+                            app = app,
+                            onClick = onClick,
+                            onLongPress = onLongPress,
+                            showLabel = showAppLabels,
+                            iconSize = iconSize,
+                            showIconBackground = showIconBackground,
+                        )
+                    }
                 }
             }
         }
     }
 
     val menuAppCurrent = menuApp
-    if (menuAppCurrent != null) {
-        val accent = LocalLauncherAccent.current
-        val isFavorite = menuAppCurrent.isFavorite
-        val showRemoveAction = activeCategory != AppCategory.ALL
-        val onRemove = if (activeCategory == AppCategory.FAVORITES) {
-            { onToggleFavorite(menuAppCurrent) }
-        } else {
-            { onClearCategory(menuAppCurrent) }
-        }
-        val favoriteIcon = if (isFavorite) Icons.Rounded.Star else Icons.Rounded.StarBorder
-        val menuShape = RoundedCornerShape(14.dp)
-        val menuItemBg = colors.surfaceVariant.copy(alpha = 0.7f)
-
-        DropdownMenu(
-            expanded = true,
-            onDismissRequest = { menuApp = null },
-            offset = DpOffset(6.dp, 6.dp),
-            modifier = Modifier
-                .widthIn(min = 180.dp)
-                .clip(menuShape)
-                .background(colors.surface)
-                .border(1.dp, colors.border.copy(alpha = 0.8f), menuShape)
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(menuItemBg)
-                            .clickable {
-                                menuApp = null
-                                onToggleFavorite(menuAppCurrent)
-                            }
-                            .padding(vertical = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = favoriteIcon,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = if (isFavorite) accent.primary else colors.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (isFavorite) "Quitar" else "Favorito",
-                            style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(menuItemBg)
-                            .clickable {
-                                menuApp = null
-                                showCategoryPicker = menuAppCurrent
-                            }
-                            .padding(vertical = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = colors.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Mover",
-                            style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-
-                    if (showRemoveAction) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(menuItemBg)
-                                .clickable {
-                                    menuApp = null
-                                    onRemove()
-                                }
-                                .padding(vertical = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = colors.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Quitar",
-                                style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                    }
+    val menuBoundsCurrent = menuBounds
+    if (menuAppCurrent != null && menuBoundsCurrent != null) {
+        AppContextMenu(
+            app = menuAppCurrent,
+            anchorBounds = menuBoundsCurrent,
+            density = density,
+            activeCategory = activeCategory,
+            onDismiss = { menuApp = null; menuBounds = null },
+            onToggleFavorite = { stableOnLongPress(menuAppCurrent) },
+            onMove = { showCategoryPicker = menuAppCurrent; menuApp = null; menuBounds = null },
+            onAppInfo = { stableOnAppInfo(menuAppCurrent); menuApp = null; menuBounds = null },
+            onUninstall = { stableOnUninstall(menuAppCurrent); menuApp = null; menuBounds = null },
+            onRemove = {
+                if (activeCategory == AppCategory.FAVORITES) {
+                    stableOnLongPress(menuAppCurrent)
+                } else {
+                    stableOnClearCategory(menuAppCurrent)
                 }
-
-                HorizontalDivider(
-                    color = colors.border.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-
-                DropdownMenuItem(
-                    text = { Text("Información", style = LauncherTypography.bodyMedium) },
-                    onClick = {
-                        menuApp = null
-                        onAppInfo(menuAppCurrent)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(20.dp))
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                )
-
-                DropdownMenuItem(
-                    text = { Text("Desinstalar", style = LauncherTypography.bodyMedium) },
-                    onClick = {
-                        menuApp = null
-                        onUninstall(menuAppCurrent)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                )
-            }
-        }
+                menuApp = null; menuBounds = null
+            },
+        )
     }
 
     val categoryApp = showCategoryPicker
@@ -312,7 +229,7 @@ fun AppGrid(
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(colors.surfaceVariant.copy(alpha = 0.35f))
                                 .clickable {
-                                    onAssignCategory(categoryApp, category)
+                                    stableOnAssignCategory(categoryApp, category)
                                     showCategoryPicker = null
                                 }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -341,5 +258,215 @@ fun AppGrid(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun AppContextMenu(
+    app: AppModel,
+    anchorBounds: Rect,
+    density: Density,
+    activeCategory: String,
+    onDismiss: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onMove: () -> Unit,
+    onAppInfo: () -> Unit,
+    onUninstall: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val colors = LocalColors.current
+    val accent = LocalLauncherAccent.current
+    val isFavorite = app.isFavorite
+    val showRemoveAction = activeCategory != AppCategory.ALL
+    val favoriteIcon = if (isFavorite) Icons.Rounded.Star else Icons.Rounded.StarBorder
+    val menuShape = RoundedCornerShape(14.dp)
+    val menuItemBg = colors.surfaceVariant.copy(alpha = 0.7f)
+
+    Popup(
+        popupPositionProvider = AppMenuPositionProvider(anchorBounds, density),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 180.dp, max = 260.dp)
+                .shadow(8.dp, menuShape)
+                .clip(menuShape)
+                .background(colors.surface)
+                .border(1.dp, colors.border.copy(alpha = 0.8f), menuShape)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(menuItemBg)
+                        .clickable {
+                            onDismiss()
+                            onToggleFavorite()
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = favoriteIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isFavorite) accent.primary else colors.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (isFavorite) "Quitar" else "Favorito",
+                        style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(menuItemBg)
+                        .clickable {
+                            onDismiss()
+                            onMove()
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = colors.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Mover",
+                        style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                if (showRemoveAction) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(menuItemBg)
+                            .clickable {
+                                onDismiss()
+                                onRemove()
+                            }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = colors.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Quitar",
+                            style = LauncherTypography.bodySmall.copy(fontSize = 10.sp),
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                color = colors.border.copy(alpha = 0.5f),
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        onDismiss()
+                        onAppInfo()
+                    }
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.onSurfaceVariant
+                )
+                Text("Información", style = LauncherTypography.bodyMedium, color = colors.onBackground)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        onDismiss()
+                        onUninstall()
+                    }
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+                Text("Desinstalar", style = LauncherTypography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+private class AppMenuPositionProvider(
+    private val anchorBounds: Rect,
+    private val density: Density
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val anchor = with(density) {
+            IntRect(
+                left = this@AppMenuPositionProvider.anchorBounds.left.toDp().roundToPx(),
+                top = this@AppMenuPositionProvider.anchorBounds.top.toDp().roundToPx(),
+                right = this@AppMenuPositionProvider.anchorBounds.right.toDp().roundToPx(),
+                bottom = this@AppMenuPositionProvider.anchorBounds.bottom.toDp().roundToPx()
+            )
+        }
+        val margin = with(density) { 8.dp.roundToPx() }
+
+        var x = anchor.left + (anchor.width - popupContentSize.width) / 2
+        var y = anchor.bottom + margin
+
+        if (x + popupContentSize.width > windowSize.width - margin) {
+            x = windowSize.width - popupContentSize.width - margin
+        }
+        if (x < margin) x = margin
+
+        if (y + popupContentSize.height > windowSize.height - margin) {
+            y = anchor.top - popupContentSize.height - margin
+        }
+        if (y < margin) y = anchor.bottom + margin
+
+        return IntOffset(x, y)
     }
 }

@@ -55,6 +55,8 @@ class AppContainer(private val application: Application) {
     val openAppInfoUseCase = OpenAppInfoUseCase(application)
     val uninstallAppUseCase = UninstallAppUseCase(application)
     val categoryCache = dev.vive.kdelauncher.data.repository.CategoryCache(application)
+    val appListCache = dev.vive.kdelauncher.data.repository.AppListCache()
+    val persistentAppCache = dev.vive.kdelauncher.data.repository.PersistentAppCache(application)
     val suggestAppOrganizationUseCase = dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase()
     val checkProductTourStatusUseCase = CheckProductTourStatusUseCase(settingsManager)
     val dismissProductTourUseCase = DismissProductTourUseCase(settingsManager)
