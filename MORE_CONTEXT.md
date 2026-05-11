@@ -67,6 +67,32 @@ La limpieza se ejecutó en 5 fases controladas:
 - El proyecto usa un **launcher real** con soporte para Work Profile, icon packs, ajustes visuales, y tematización dinámica.
 - *Nota sobre pruebas:* Siguiendo las reglas del repositorio, el proyecto se mantiene ágil sin la creación activa de suites de tests para las capas de UI experimentales.
 
+### Flujo de datos
+
+1. **MainActivity** obtiene el `LauncherViewModel` desde el contenedor de la app y observa sus estados independientes (`uiState`, `appGridState`, `tourState`).
+2. El ViewModel delega en los **use cases** para cargar apps, lanzar actividades, marcar favoritos y leer estado del sistema.
+3. La carga de apps se hace en **single emission**: el ViewModel inicializa `_allApps` desde `AppListCache` (warm start) y luego refresca en background. Todo el procesamiento (categorizacion, sorting) ocurre en `Dispatchers.Default`.
+4. Los cambios de configuracion se guardan en **DataStore** y se reflejan en la interfaz con `StateFlow`.
+5. El filtrado de apps (busqueda + categoria) se ejecuta en **`Dispatchers.Default`** mediante `.flowOn()`, evitando bloqueos en el hilo principal.
+6. Trabajo no critico (`refreshIconPacks`, `refreshSystemStatus`, sugerencias de organizacion) se **difiere** tras el primer frame para no competir por el hilo principal durante el arranque.
+
+### Optimizaciones de rendimiento (resumen)
+
+- **Warm start con cache de proceso**: `AppListCache` guarda la ultima lista de apps en memoria. Si el proceso aun vive, el launcher se restaura instantaneamente.
+- **Recuperacion tras process death**: `PersistentAppCache` serializa metadata de apps a JSON en disco. Tras ser matado por el sistema, el launcher se restaura en ~50ms con nombres y categorias, luego refresca iconos en background.
+- **Single emission en startup**: Eliminada la doble emision de `_allApps` (metadata + full). Ahora hay una sola emision procesada en `Dispatchers.Default`.
+- **Manifest optimizado**: Removido `clearTaskOnLaunch` (que forzaba recreacion de Activity en cada Home) y `stateNotNeeded`. Agregado `largeHeap` para reducir kills por memoria.
+- **Cache en memoria**: Los iconos decodificados se guardan para evitar trabajo repetido.
+- **Icon packs**: Cada `appfilter.xml` se parsea una sola vez y se reutiliza.
+- **StateFlow independientes**: `uiState`, `appGridState` y `tourState` son flujos separados en el ViewModel para aislar recomposiciones.
+- **Modelos `@Immutable`**: `AppModel` y `AppGridState` estan marcados como inmutables, permitiendo que Compose recicle eficientemente los items del grid.
+- **Grid eficiente**: `LazyVerticalGrid` usa `key` estable (`packageName + profileTag`) y `contentType` para reciclaje optimo.
+- **Callbacks estables**: Los lambdas `onClick`/`onLongPress` de cada celda se cachean con `remember(app)`; `AppIcon` usa `rememberUpdatedState` para evitar reiniciar el detector de gestos.
+- **Busqueda con debounce**: El query de busqueda se debouncea a 150ms para evitar filtrado continuo mientras el usuario escribe.
+- **Filtrado en background**: `mapAppContentFiltered` corre en `Dispatchers.Default` para no bloquear el hilo principal.
+- **Tour condicional**: El modifier `.tourTarget()` solo se aplica cuando `tourState.isActive == true`, eliminando overhead de `Modifier.Node` durante el uso normal.
+- **Sin tracking por celda**: Eliminado `onGloballyPositioned` de los items individuales del grid, que causaba recomposiciones masivas en cada frame de scroll.
+
 ## 4. Evolución Reciente (Temas Dev & TAPO Labs)
 
 En la iteración más reciente, se integraron funcionalidades de alto impacto manteniendo la arquitectura limpia existente:
