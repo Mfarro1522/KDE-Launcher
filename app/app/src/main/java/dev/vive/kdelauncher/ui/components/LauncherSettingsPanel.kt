@@ -103,6 +103,7 @@ fun LauncherSettingsPanel(
     onUnhideApp: (String) -> Unit = {},
     showAllHiddenTemporarily: Boolean = false,
     onToggleShowHidden: () -> Unit = {},
+    onOpenAssistantSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
@@ -684,6 +685,61 @@ fun LauncherSettingsPanel(
             showAllHiddenTemporarily = showAllHiddenTemporarily,
             onToggleShowHidden = onToggleShowHidden,
         )
+
+        // ── Divider ──────────────────────────────────────
+        HorizontalDivider(color = colors.border.copy(alpha = 0.4f))
+
+        // ── Assistant Diagnostic ─────────────────────────
+        SectionLabel("Asistente de voz")
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("assistant-settings-row")
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onOpenAssistantSettings
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(accent.primaryBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Assistant,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = accent.primary
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Configurar asistente digital",
+                    style = LauncherTypography.bodyMedium,
+                    color = colors.onBackground
+                )
+                Text(
+                    text = "Si el asistente no responde al mantener Home, verifica que \"Google\" esté seleccionado como asistente digital en los ajustes del sistema.",
+                    style = LauncherTypography.bodySmall,
+                    color = colors.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+            Icon(
+                imageVector = Icons.Rounded.OpenInNew,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = accent.primary.copy(alpha = 0.7f)
+            )
+        }
 
         // ── Divider ──────────────────────────────────────
         HorizontalDivider(color = colors.border.copy(alpha = 0.4f))

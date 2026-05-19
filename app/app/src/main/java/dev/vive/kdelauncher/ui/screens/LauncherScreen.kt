@@ -262,6 +262,7 @@ fun LauncherScreen(
                 onUnhideApp = { viewModel.unhideApp(it) },
                 showAllHiddenTemporarily = showAllHiddenTemporarily,
                 onToggleShowHidden = { viewModel.toggleShowHiddenTemporarily() },
+                onOpenAssistantSettings = { viewModel.openAssistantSettings() },
                 modifier = Modifier
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .heightIn(max = 420.dp)

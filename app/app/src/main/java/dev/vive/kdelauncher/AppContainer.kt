@@ -19,6 +19,7 @@ import dev.vive.kdelauncher.domain.usecase.LaunchAppUseCase
 import dev.vive.kdelauncher.domain.usecase.LoadAppsUseCase
 import dev.vive.kdelauncher.domain.usecase.LoadIconPacksUseCase
 import dev.vive.kdelauncher.domain.usecase.OpenAppInfoUseCase
+import dev.vive.kdelauncher.domain.usecase.OpenAssistantSettingsUseCase
 import dev.vive.kdelauncher.domain.usecase.OpenSetDefaultLauncherUseCase
 import dev.vive.kdelauncher.domain.usecase.SetCategoryOverrideUseCase
 import dev.vive.kdelauncher.domain.usecase.ToggleFavoriteUseCase
@@ -61,6 +62,7 @@ class AppContainer(private val application: Application) {
     val getSystemStatusUseCase = GetSystemStatusUseCase(application, workProfileManager)
     val setCategoryOverrideUseCase = SetCategoryOverrideUseCase(settingsManager)
     val openSetDefaultLauncherUseCase = OpenSetDefaultLauncherUseCase(application)
+    val openAssistantSettingsUseCase = OpenAssistantSettingsUseCase(application)
     val openAppInfoUseCase = OpenAppInfoUseCase(application)
     val uninstallAppUseCase = UninstallAppUseCase(application)
     val categoryCache = dev.vive.kdelauncher.data.repository.CategoryCache(application)

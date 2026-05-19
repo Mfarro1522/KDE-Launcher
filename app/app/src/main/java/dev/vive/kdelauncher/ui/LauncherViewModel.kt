@@ -133,6 +133,7 @@ class LauncherViewModel(
     private val openSetDefaultLauncherUseCase: OpenSetDefaultLauncherUseCase,
     private val openAppInfoUseCase: OpenAppInfoUseCase,
     private val uninstallAppUseCase: UninstallAppUseCase,
+    private val openAssistantSettingsUseCase: dev.vive.kdelauncher.domain.usecase.OpenAssistantSettingsUseCase,
     private val suggestAppOrganizationUseCase: dev.vive.kdelauncher.domain.usecase.SuggestAppOrganizationUseCase,
     private val categoryCache: dev.vive.kdelauncher.data.repository.CategoryCache,
     private val appListCache: dev.vive.kdelauncher.data.repository.AppListCache,
@@ -835,6 +836,14 @@ class LauncherViewModel(
         }
     }
 
+    fun openAssistantSettings() {
+        try {
+            openAssistantSettingsUseCase()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
 
     fun openAppInfo(app: AppModel) {
         try {
@@ -961,6 +970,7 @@ class LauncherViewModel(
                 setCategoryOverrideUseCase = container.setCategoryOverrideUseCase,
                 openSetDefaultLauncherUseCase = container.openSetDefaultLauncherUseCase,
                 openAppInfoUseCase = container.openAppInfoUseCase,
+                openAssistantSettingsUseCase = container.openAssistantSettingsUseCase,
                 uninstallAppUseCase = container.uninstallAppUseCase,
                 suggestAppOrganizationUseCase = container.suggestAppOrganizationUseCase,
                 categoryCache = container.categoryCache,
