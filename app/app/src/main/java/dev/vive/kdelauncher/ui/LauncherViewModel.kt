@@ -838,11 +838,21 @@ class LauncherViewModel(
 
     fun openAssistantSettings() {
         try {
-            openAssistantSettingsUseCase()
+            openAssistantSettingsUseCase.openDefaultAssistantSettings()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
+
+    fun openXiaomiAssistantSettings(): Boolean {
+        return try {
+            openAssistantSettingsUseCase.openXiaomiButtonShortcuts()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
 
 
     fun openAppInfo(app: AppModel) {

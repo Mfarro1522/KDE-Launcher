@@ -355,3 +355,51 @@ En lugar de emitir sin íconos y luego re-emitir con íconos:
 | ImageBitmap pre-warm | 50ms | 20 primeros íconos |
 | Primera emisión _allApps | 180ms | UI renderiza con íconos |
 | refreshApps() background | ~2s | Detecta que nada cambió, no re-emite |
+
+---
+
+## Investigación: Bug del asistente de voz (Long-Press Home)
+
+### Problema reportado
+Cuando TAPO Launcher está configurado como launcher predeterminado en un dispositivo Xiaomi (MIUI/HyperOS), el gesto de mantener presionado el botón Home para invocar al asistente digital (Google Assistant / Gemini / Circle to Search) **deja de funcionar**. Al desinstalar TAPO o cambiar al launcher de fábrica, el asistente vuelve a funcionar inmediatamente.
+
+### Lo que se intentó (y no funcionó)
+
+1. **Remover `priority="1"` del intent-filter HOME** (v1.2.0): Se eliminó el atributo de prioridad por si interfería con la resolución de gestos del sistema. Sin efecto.
+2. **Remover `clearTaskOnLaunch` y `stateNotNeeded`** (v1.2.0): Se eliminaron estos atributos estándar de launcher por si causaban conflicto con la pila de tareas. Sin efecto.
+3. **Mover orientación de manifest a programática** (v1.2.0): Se cambió `android:screenOrientation` a `requestedOrientation = SCREEN_ORIENTATION_PORTRAIT` en `onCreate()`. Sin efecto.
+4. **Unificar HOME y LAUNCHER en un solo intent-filter**: Se combinaron ambas categorías en un único `<intent-filter>`. Sin efecto.
+5. **Separar HOME y LAUNCHER en intent-filters individuales**: Se volvieron a separar las categorías en bloques distintos siguiendo el estándar AOSP. Sin efecto.
+6. **Restaurar `clearTaskOnLaunch` + `stateNotNeeded`**: Se re-agregaron los atributos estándar de AOSP Launcher3. Sin efecto.
+7. **Mover orientación de programática a manifest**: Se declaró `android:screenOrientation="portrait"` estáticamente y se removió `requestedOrientation` del código. Sin efecto.
+8. **Implementar `OpenAssistantSettingsUseCase`**: Se agregó un acceso directo en la UI del launcher para que el usuario configure manualmente el asistente digital predeterminado. Funcional pero no resuelve la causa raíz.
+
+### Diagnóstico con instrumentación en vivo
+
+Se inyectó un sistema completo de telemetría en `MainActivity` con el tag `TAPO_DIAGNOSTIC` para capturar en tiempo real:
+- Detalles de cada `Intent` recibido (acción, categorías, flags, extras)
+- Estado completo de la pila de tareas (`ActivityManager.getRunningTasks`)
+- Ciclo de vida detallado de la actividad (`onCreate`, `onNewIntent`, `onResume`, etc.)
+- Cambios de foco de ventana (`onWindowFocusChanged`)
+- Eventos de teclas físicas (`dispatchKeyEvent`)
+
+**Resultado del diagnóstico (captura real desde dispositivo físico Xiaomi via `adb logcat`):**
+
+- **Presión simple de Home**: Genera `onNewIntent` con `action=MAIN`, `category=HOME`, `flags=0x10400100`, extra `FROM_HOME_KEY`. Funciona correctamente.
+- **Long-press Home (el gesto que falla)**: **No genera absolutamente ningún evento**. Ni `dispatchKeyEvent`, ni `onWindowFocusChanged`, ni `onNewIntent`, ni ningún callback de ciclo de vida. El launcher no recibe nada del sistema operativo.
+- **Bloqueo/desbloqueo de pantalla**: Genera correctamente `onPause` → `onStop` → `onRestart` → `onResume`.
+
+### Conclusión
+
+El diagnóstico demuestra que **TAPO Launcher no intercepta, consume ni bloquea el gesto**. Es el sistema operativo MIUI/HyperOS el que decide no disparar el evento de asistente cuando un launcher de terceros está activo.
+
+Esto es una **limitación conocida y documentada de MIUI/HyperOS** que afecta a **todos** los launchers de terceros (Nova Launcher, Lawnchair, Niagara, etc.):
+
+- Xiaomi integra su motor de gestos y shortcuts de navegación directamente dentro de `com.miui.home` (su launcher de fábrica).
+- Cuando cualquier launcher de terceros se configura como predeterminado, el sistema desactiva deliberadamente estos hooks de navegación.
+- No existe una whitelist de paquetes, atributo de manifest, ni permiso que permita restaurar esta funcionalidad desde el lado de la app.
+- Las soluciones conocidas en la comunidad son: usar el botón de encendido para invocar al asistente, usar apps de gestos de terceros (Edge Gestures, FNG), o implementar un trigger propio dentro del launcher.
+
+### Estado actual
+
+Los cambios experimentales en `AndroidManifest.xml` y `MainActivity.kt` fueron **revertidos** al estado del último commit (`v.1.3.0`). No se dejó código de diagnóstico ni cambios especulativos en el proyecto. La configuración actual del manifest es funcional y estable.

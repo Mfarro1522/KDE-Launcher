@@ -20,8 +20,8 @@ class OrganizeAppsWithAiUseCaseTest : StringSpec({
         val apps = listOf(
             AppModel("com.android.settings", ".Main", "Settings", category = AppCategory.SYSTEM, isSystemApp = true),
             AppModel("com.game.app", ".Main", "Game", category = AppCategory.GAMES),
-            AppModel("com.spotify.music", ".Main", "Spotify", category = AppCategory.MUSIC),
-            AppModel("com.normal.app", ".Main", "Normal", category = AppCategory.SOCIAL)
+            AppModel("com.spotify.music", ".Main", "Spotify", category = AppCategory.MULTIMEDIA),
+            AppModel("com.normal.app", ".Main", "Normal", category = AppCategory.ALL)
         )
 
         val provider = mockk<AiProvider>()
@@ -30,7 +30,7 @@ class OrganizeAppsWithAiUseCaseTest : StringSpec({
         every { promptBuilder.buildSystemPrompt() } returns "system"
         every { promptBuilder.buildUserPrompt(any(), any()) } returns "user"
         coEvery { provider.classify(any(), any()) } returns Result.success(
-            """{"apps":[{"p":"com.normal.app","c":"social","i":"message-circle"}]}"""
+            """{"apps":[{"p":"com.normal.app","c":"all","i":"message-circle"}]}"""
         )
 
         val result = useCase(apps, provider, useCache = false)

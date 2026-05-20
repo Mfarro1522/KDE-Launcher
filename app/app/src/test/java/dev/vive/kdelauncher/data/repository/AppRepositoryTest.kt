@@ -20,7 +20,7 @@ class AppRepositoryTest : FunSpec({
                 activityName = "com.example.app.MainActivity",
                 label = "Example App",
                 icon = null,
-                category = AppCategory.SOCIAL,
+                category = AppCategory.ALL,
                 isFavorite = false,
                 profileTag = ProfileType.PERSONAL,
             )
@@ -28,7 +28,7 @@ class AppRepositoryTest : FunSpec({
             app.packageName shouldBe "com.example.app"
             app.activityName shouldBe "com.example.app.MainActivity"
             app.label shouldBe "Example App"
-            app.category shouldBe AppCategory.SOCIAL
+            app.category shouldBe AppCategory.ALL
             app.isFavorite shouldBe false
             app.profileTag shouldBe ProfileType.PERSONAL
         }
@@ -146,7 +146,7 @@ class AppRepositoryTest : FunSpec({
         test("specific category shows only matching apps") {
             val apps = listOf(
                 AppModel(packageName = "a", activityName = ".Main", label = "A", category = AppCategory.GAMES),
-                AppModel(packageName = "b", activityName = ".Main", label = "B", category = AppCategory.SOCIAL),
+                AppModel(packageName = "b", activityName = ".Main", label = "B", category = AppCategory.ALL),
                 AppModel(packageName = "c", activityName = ".Main", label = "C", category = AppCategory.GAMES),
             )
 

@@ -1,87 +1,65 @@
 package dev.vive.kdelauncher.domain.usecase
 
+import dev.vive.kdelauncher.data.model.AppCategory
+
 object LocalHeuristics {
     private val exact = mapOf(
-        // Social
-        "com.whatsapp"                              to Pair("social",       "message-circle"),
-        "org.telegram.messenger"                    to Pair("social",       "message-circle"),
-        "com.instagram.android"                     to Pair("social",       "heart"),
-        "com.discord"                               to Pair("social",       "users"),
-        "com.twitter.android"                       to Pair("social",       "at-sign"),
-        "com.linkedin.android"                      to Pair("social",       "briefcase"),
-        "com.reddit.frontpage"                      to Pair("social",       "message-square"),
-        "org.joinmastodon.android"                  to Pair("social",       "globe"),
-        "xyz.blueskyweb.app"                        to Pair("social",       "cloud"),
-        "com.instagram.barcelona"                   to Pair("social",       "at-sign"),
+        // Compras
+        "com.bcp.innovacxion.yapeapp"               to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "pe.interbank.mobilebanking"                to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "com.bbva.nxt_peru"                         to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "ar.com.uala"                               to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "com.nubank"                                to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "com.mercadopago.wallet"                    to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "com.paypal.android.p2pmobile"              to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "com.coinbase.android"                      to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "org.monero.wallet"                         to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
+        "com.nequi"                                 to Pair(AppCategory.COMPRAS,      "ShoppingCart"),
 
-        // Media / Streaming
-        "com.spotify.music"                         to Pair("media",        "music"),
-        "com.google.android.youtube"                to Pair("media",        "play-circle"),
-        "com.netflix.mediaclient"                   to Pair("media",        "video"),
-        "com.amazon.avod.thirdpartyclient"          to Pair("media",        "video"),
-        "com.disney.disneyplus"                     to Pair("media",        "video"),
-        "com.hbo.hbonow"                            to Pair("media",        "video"),
-        "tv.twitch.android.app"                     to Pair("media",        "video"),
-        "com.crunchyroll.crunchyroid"               to Pair("media",        "video"),
-        "com.soundcloud.android"                    to Pair("media",        "music"),
+        // Multimedia
+        "com.spotify.music"                         to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.google.android.youtube"                to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.netflix.mediaclient"                   to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.amazon.avod.thirdpartyclient"          to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.disney.disneyplus"                     to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.hbo.hbonow"                            to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "tv.twitch.android.app"                     to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.crunchyroll.crunchyroid"               to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
+        "com.soundcloud.android"                    to Pair(AppCategory.MULTIMEDIA,   "Headphones"),
 
-        // Productivity
-        "com.google.android.gm"                     to Pair("productivity", "mail"),
-        "com.microsoft.office.outlook"              to Pair("productivity", "mail"),
-        "com.slack"                                 to Pair("productivity", "hash"),
-        "com.notion.android"                        to Pair("productivity", "file-text"),
-        "com.todoist"                               to Pair("productivity", "check-square"),
-        "com.ticktick.task"                         to Pair("productivity", "check-square"),
-        "com.google.android.keep"                   to Pair("productivity", "sticky-note"),
-
-        // Browsers
-        "org.mozilla.fenix"                         to Pair("browsers",     "globe"),
-        "com.brave.browser"                         to Pair("browsers",     "shield"),
-
-        // Development
-        "com.termux"                                to Pair("development",  "terminal"),
-        "org.connectbot"                            to Pair("development",  "terminal"),
-        "org.fdroid.fdroid"                         to Pair("development",  "package-2"),
-        "com.aurora.store"                          to Pair("development",  "package-2"),
-        "app.revanced.manager.flutter"              to Pair("development",  "code-2"),
-        "dev.imranr.obtainium.fdroid"               to Pair("development",  "git-branch"),
+        // Herramientas (productivity, utilities, dev, travel, browsers)
+        "com.google.android.gm"                     to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.microsoft.office.outlook"              to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.slack"                                 to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.notion.android"                        to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.todoist"                               to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.ticktick.task"                         to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.google.android.keep"                   to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "org.mozilla.fenix"                         to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.brave.browser"                         to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.termux"                                to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "org.connectbot"                            to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "org.fdroid.fdroid"                         to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.aurora.store"                          to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "app.revanced.manager.flutter"              to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "dev.imranr.obtainium.fdroid"               to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.google.android.apps.maps"              to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.ubercab"                               to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.booking"                               to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.airbnb.android"                        to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.didi.passenger"                        to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.cabify.rider"                          to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.kunzisoft.keepass.libre"               to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "org.kde.kdeconnect_tp"                     to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "org.localsend.localsend_app"               to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.adobe.lrmobile"                        to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.canva.editor"                          to Pair(AppCategory.HERRAMIENTAS, "Build"),
+        "com.simplemobiletools.gallery.pro"         to Pair(AppCategory.HERRAMIENTAS, "Build"),
 
         // Games
-        "com.supercell.clashofclans"                to Pair("games",        "swords"),
-        "com.miHoYo.GenshinImpact"                  to Pair("games",        "gamepad-2"),
-        "com.valvesoftware.android.steam.community" to Pair("games",        "gamepad-2"),
-
-        // Travel
-        "com.google.android.apps.maps"              to Pair("travel",       "map-pin"),
-        "com.ubercab"                               to Pair("travel",       "car"),
-        "com.booking"                               to Pair("travel",       "map-pin"),
-        "com.airbnb.android"                        to Pair("travel",       "home"),
-        "com.didi.passenger"                        to Pair("travel",       "car"),
-        "com.cabify.rider"                          to Pair("travel",       "car"),
-
-        // Finance / Wallets (LATAM focus)
-        "com.bcp.innovacxion.yapeapp"               to Pair("finance",      "wallet"),
-        "com.paypal.android.p2pmobile"              to Pair("finance",      "banknote"),
-        "com.coinbase.android"                      to Pair("finance",      "coins"),
-        "org.monero.wallet"                         to Pair("finance",      "shield-dollar"),
-        "ar.com.uala"                               to Pair("finance",      "wallet"),
-        "com.nubank"                                to Pair("finance",      "wallet"),
-        "com.mercadopago.wallet"                    to Pair("finance",      "wallet"),
-        "com.nequi"                                 to Pair("finance",      "wallet"),
-
-        // Utilities
-        "com.kunzisoft.keepass.libre"               to Pair("utilities",    "shield-check"),
-        "org.kde.kdeconnect_tp"                     to Pair("utilities",    "layers"),
-        "org.localsend.localsend_app"               to Pair("utilities",    "hard-drive"),
-
-        // Creativity
-        "com.adobe.lrmobile"                        to Pair("creativity",   "aperture"),
-        "com.canva.editor"                          to Pair("creativity",   "palette"),
-        "com.simplemobiletools.gallery.pro"         to Pair("creativity",   "image"),
-
-        // Health
-        "com.google.android.apps.fitness"           to Pair("health",       "heart-pulse"),
-        "com.strava"                                to Pair("health",       "activity"),
+        "com.supercell.clashofclans"                to Pair(AppCategory.GAMES,        "Gamepad"),
+        "com.miHoYo.GenshinImpact"                  to Pair(AppCategory.GAMES,        "Gamepad"),
+        "com.valvesoftware.android.steam.community" to Pair(AppCategory.GAMES,        "Gamepad")
     )
 
     fun classify(packageName: String): Pair<String, String>? = exact[packageName]

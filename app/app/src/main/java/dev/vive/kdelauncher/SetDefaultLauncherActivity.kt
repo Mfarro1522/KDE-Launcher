@@ -17,10 +17,41 @@ import android.provider.Settings
  */
 class SetDefaultLauncherActivity : Activity() {
 
+    companion object {
+        const val EXTRA_OPEN_SETTINGS = "open_settings"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        openDefaultLauncherSettings()
+        val openSettings = intent?.getBooleanExtra(EXTRA_OPEN_SETTINGS, false) ?: false
+        if (openSettings && !isAlreadyDefaultLauncher()) {
+            openDefaultLauncherSettings()
+        } else {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            startActivity(intent)
+        }
         finish()
+    }
+
+    private fun isAlreadyDefaultLauncher(): Boolean {
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val roleManager = getSystemService(ROLE_SERVICE) as android.app.role.RoleManager
+                roleManager.isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+            } else {
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                }
+                val resolveInfo = packageManager.resolveActivity(
+                    intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                )
+                resolveInfo?.activityInfo?.packageName == packageName
+            }
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun openDefaultLauncherSettings() {

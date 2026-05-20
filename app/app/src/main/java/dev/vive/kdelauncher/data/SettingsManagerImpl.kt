@@ -101,15 +101,7 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
         context.dataStore.edit { it[Keys.GRID_COLUMNS] = columns }
     }
 
-    // --- Category display names ---
-
-    private val knownCategories = setOf(
-        "favorites", "all", "social", "productivity", "utilities",
-        "media", "creativity", "games", "finance", "shopping",
-        "travel", "browsers", "development",
-        "system", "music", "streaming", "multimedia",
-        "wallets", "compras", "finanzas", "dev"
-    )
+    private val knownCategories = dev.vive.kdelauncher.data.model.AppCategory.FIXED.toSet()
 
     private val allCategoryIds: Flow<Set<String>> = context.dataStore.data
         .map { prefs ->
@@ -177,13 +169,7 @@ class SettingsManagerImpl(private val context: Context) : SettingsManager {
     }
 
     // --- Category order ---
-    private val defaultOrder = listOf(
-        dev.vive.kdelauncher.data.model.AppCategory.FAVORITES,
-        dev.vive.kdelauncher.data.model.AppCategory.ALL,
-        dev.vive.kdelauncher.data.model.AppCategory.SOCIAL,
-        dev.vive.kdelauncher.data.model.AppCategory.PRODUCTIVITY,
-        dev.vive.kdelauncher.data.model.AppCategory.UTILITIES
-    )
+    private val defaultOrder = dev.vive.kdelauncher.data.model.AppCategory.FIXED
 
     override val categoryOrder: Flow<List<String>> = context.dataStore.data
         .map { prefs ->

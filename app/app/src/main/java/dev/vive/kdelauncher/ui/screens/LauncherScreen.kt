@@ -263,6 +263,7 @@ fun LauncherScreen(
                 showAllHiddenTemporarily = showAllHiddenTemporarily,
                 onToggleShowHidden = { viewModel.toggleShowHiddenTemporarily() },
                 onOpenAssistantSettings = { viewModel.openAssistantSettings() },
+                onOpenXiaomiAssistantSettings = { viewModel.openXiaomiAssistantSettings() },
                 modifier = Modifier
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .heightIn(max = 420.dp)

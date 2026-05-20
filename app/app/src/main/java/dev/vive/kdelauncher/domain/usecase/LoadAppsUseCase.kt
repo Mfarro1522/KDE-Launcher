@@ -65,7 +65,7 @@ class LoadAppsUseCase(
             } else emptyList()
 
             val mergedApps = mergeApps(personalMeta, workMeta)
-            val metadataApps = applySmartGrouping(applyMultimediaGrouping(mergedApps))
+            val metadataApps = mergedApps
 
             val iconsByKey = withContext(Dispatchers.IO) {
                 val personalDeferreds = personalMeta.map { app ->
@@ -178,89 +178,7 @@ class LoadAppsUseCase(
             .sortedBy { it.label.lowercase() }
     }
 
-    /**
-     * Apply dynamic multimedia grouping rules:
-     * - If music >= 5 → keep "music" category
-     * - If streaming >= 5 → keep "streaming" category
-     * - If neither >= 5 but combined >= 5 → merge into "multimedia"
-     * - Otherwise → merge into "media"
-     */
-    private fun applyMultimediaGrouping(apps: List<AppModel>): List<AppModel> {
-        val musicCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.MUSIC }
-        val streamingCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.STREAMING }
-        val mediaCount = apps.count { it.category == "media" }
 
-        val totalMedia = musicCount + streamingCount + mediaCount
-
-        return if (musicCount >= 5 || streamingCount >= 5) {
-            // Keep individual categories; merge any legacy "media" into "multimedia"
-            apps.map { app ->
-                if (app.category == "media") app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.MULTIMEDIA)
-                else app
-            }
-        } else if (totalMedia >= 5) {
-            // Merge all media-related into "multimedia"
-            apps.map { app ->
-                if (app.category in setOf(
-                        dev.vive.kdelauncher.data.model.AppCategory.MUSIC,
-                        dev.vive.kdelauncher.data.model.AppCategory.STREAMING,
-                        "media"
-                    )
-                ) {
-                    app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.MULTIMEDIA)
-                } else app
-            }
-        } else {
-            // Few media apps: collapse into generic "media"
-            apps.map { app ->
-                if (app.category in setOf(
-                        dev.vive.kdelauncher.data.model.AppCategory.MUSIC,
-                        dev.vive.kdelauncher.data.model.AppCategory.STREAMING
-                    )
-                ) {
-                    app.copy(category = "media")
-                } else app
-            }
-        }
-    }
-
-    /**
-     * Apply smart grouping for wallets, shopping and dev categories:
-     * - Wallets >= 4 → keep "wallets"
-     * - Compras >= 4 → keep "compras"
-     * - Neither >= 4 but combined >= 5 → merge into "finanzas"
-     * - Dev >= 4 → keep "dev"
-     * - Dev < 4 → revert to "development"
-     */
-    private fun applySmartGrouping(apps: List<AppModel>): List<AppModel> {
-        val walletsCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.WALLETS }
-        val comprasCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.COMPRAS }
-        val devCount = apps.count { it.category == dev.vive.kdelauncher.data.model.AppCategory.DEV }
-
-        val hasEnoughWallets = walletsCount >= 4
-        val hasEnoughCompras = comprasCount >= 4
-        val hasEnoughDev = devCount >= 4
-        val shouldMergeFinanzas = !hasEnoughWallets && !hasEnoughCompras && (walletsCount + comprasCount) >= 5
-
-        return apps.map { app ->
-            when (app.category) {
-                dev.vive.kdelauncher.data.model.AppCategory.DEV -> {
-                    if (hasEnoughDev) app else app.copy(category = "development")
-                }
-                dev.vive.kdelauncher.data.model.AppCategory.WALLETS -> {
-                    if (hasEnoughWallets) app
-                    else if (shouldMergeFinanzas) app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.FINANZAS)
-                    else app.copy(category = "finance")
-                }
-                dev.vive.kdelauncher.data.model.AppCategory.COMPRAS -> {
-                    if (hasEnoughCompras) app
-                    else if (shouldMergeFinanzas) app.copy(category = dev.vive.kdelauncher.data.model.AppCategory.FINANZAS)
-                    else app.copy(category = "shopping")
-                }
-                else -> app
-            }
-        }
-    }
 
     private fun iconKey(app: AppModel): String {
         val handleId = app.userHandle?.hashCode() ?: 0

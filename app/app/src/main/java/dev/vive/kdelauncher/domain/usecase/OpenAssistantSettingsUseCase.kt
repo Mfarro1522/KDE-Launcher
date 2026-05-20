@@ -17,24 +17,63 @@ import android.provider.Settings
  */
 class OpenAssistantSettingsUseCase(private val application: Application) {
 
-    operator fun invoke() {
-        // Priority order: most specific → most generic.
-        // Different OEMs expose the assistant setting under different intents.
+    fun openDefaultAssistantSettings(): Boolean {
         val intents = listOf(
-            // Android 10+ default apps screen (closest to "Digital Assistant")
             Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
-            // Voice input settings (older Android versions)
-            Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
-            // Generic settings as last resort
-            Intent(Settings.ACTION_SETTINGS)
+            Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
         )
+        return tryLaunchAny(intents)
+    }
 
+    fun openXiaomiButtonShortcuts(): Boolean {
+        val intents = listOf(
+            // Intent 1: Key and Gesture Shortcut Settings on Xiaomi/MIUI/HyperOS
+            Intent().setClassName(
+                "com.android.settings",
+                "com.android.settings.Settings\$KeyAndGestureShortcutSettingsActivity"
+            ),
+            // Intent 2: System Navigation Settings on Xiaomi/MIUI/HyperOS
+            Intent().setClassName(
+                "com.android.settings",
+                "com.android.settings.Settings\$SystemNavigationSettingsActivity"
+            ),
+            // Intent 3: Key/Button Shortcuts on older Xiaomi/MIUI
+            Intent().setClassName(
+                "com.android.settings",
+                "com.android.settings.Settings\$GestureAndKeyShortcutSettingsActivity"
+            ),
+            // Intent 4: MIUI Full screen display settings
+            Intent().setClassName(
+                "com.android.settings",
+                "com.android.settings.Settings\$FullScreenDisplaySettingsActivity"
+            )
+        )
+        return tryLaunchAny(intents)
+    }
+
+    private fun tryLaunchAny(intents: List<Intent>): Boolean {
         for (intent in intents) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (intent.resolveActivity(application.packageManager) != null) {
-                application.startActivity(intent)
-                return
+                try {
+                    application.startActivity(intent)
+                    return true
+                } catch (_: Exception) {
+                    // Continue to next fallback intent
+                }
             }
+        }
+        return false
+    }
+
+    operator fun invoke() {
+        if (!openDefaultAssistantSettings()) {
+            val genericSettings = Intent(Settings.ACTION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                application.startActivity(genericSettings)
+            } catch (_: Exception) {}
         }
     }
 }

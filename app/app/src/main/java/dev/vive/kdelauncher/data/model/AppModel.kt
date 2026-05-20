@@ -43,79 +43,43 @@ data class AppModel(
 
 /**
  * Fixed categories shown by default in the launcher UI.
- * The AI can also create dynamic categories on the fly.
  */
 object AppCategory {
     const val FAVORITES = "favorites"
     const val ALL = "all"
-    const val SOCIAL = "social"
-    const val PRODUCTIVITY = "productivity"
-    const val UTILITIES = "utilities"
-    const val SYSTEM = "system"
-    const val GAMES = "games"
-    const val MUSIC = "music"
-    const val STREAMING = "streaming"
-    const val MULTIMEDIA = "multimedia"
-    const val WALLETS = "wallets"
     const val COMPRAS = "compras"
-    const val FINANZAS = "finanzas"
-    const val DEV = "dev"
+    const val MULTIMEDIA = "multimedia"
+    const val SYSTEM = "system"
+    const val HERRAMIENTAS = "herramientas"
+    const val GAMES = "games"
 
     /** Categories always visible in settings / tabs */
-    val FIXED = listOf(FAVORITES, ALL, SOCIAL, PRODUCTIVITY, UTILITIES)
+    val FIXED = listOf(FAVORITES, ALL, COMPRAS, MULTIMEDIA, SYSTEM, HERRAMIENTAS, GAMES)
 
     /** Categories handled locally and excluded from AI payload. */
-    val AI_EXCLUDED = setOf(SYSTEM, GAMES, MUSIC, STREAMING, MULTIMEDIA, WALLETS, COMPRAS, FINANZAS, DEV)
+    val AI_EXCLUDED = setOf(SYSTEM, GAMES, MULTIMEDIA)
 
     /** Human-readable labels (Spanish). Dynamic categories fallback to capitalized ID. */
     fun displayName(id: String): String = when (id) {
         FAVORITES -> "Favoritos"
         ALL -> "Todas"
-        SOCIAL -> "Social"
-        PRODUCTIVITY -> "Productividad"
-        UTILITIES -> "Utilidades"
-        SYSTEM -> "Apps del Sistema"
-        GAMES -> "Juegos"
-        MUSIC -> "Música"
-        STREAMING -> "Streaming"
-        MULTIMEDIA -> "Multimedia"
-        WALLETS -> "Wallets"
         COMPRAS -> "Compras"
-        FINANZAS -> "Finanzas"
-        DEV -> "Dev"
-        "media" -> "Media"
-        "creativity" -> "Creatividad"
-        "finance" -> "Finanzas"
-        "shopping" -> "Compras"
-        "travel" -> "Viajes"
-        "browsers" -> "Navegadores"
-        "development" -> "Desarrollo"
-        else -> id.replaceFirstChar { it.uppercase() }
+        MULTIMEDIA -> "Multimedia"
+        SYSTEM -> "Apps del Sistema"
+        HERRAMIENTAS -> "Herramientas"
+        GAMES -> "Juegos"
+        else -> id.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
 
-    /** Default Material icon name for a category ID. */
+    /** Pre-selected vector assets from Material Design Icons catalog. */
     fun defaultIcon(id: String): String = when (id) {
         FAVORITES -> "Star"
         ALL -> "GridView"
-        SOCIAL -> "Forum"
-        PRODUCTIVITY -> "Work"
-        UTILITIES -> "Build"
-        SYSTEM -> "Settings"
-        GAMES -> "Gamepad"
-        MUSIC -> "Headphones"
-        STREAMING -> "Cloud"
-        MULTIMEDIA -> "Headphones"
-        WALLETS -> "Diamond"
         COMPRAS -> "ShoppingCart"
-        FINANZAS -> "AttachMoney"
-        DEV -> "Terminal"
-        "media" -> "PlayArrow"
-        "creativity" -> "Palette"
-        "finance" -> "AttachMoney"
-        "shopping" -> "ShoppingCart"
-        "travel" -> "Map"
-        "browsers" -> "Language"
-        "development" -> "Code"
+        MULTIMEDIA -> "Headphones"
+        SYSTEM -> "Settings"
+        HERRAMIENTAS -> "Build"
+        GAMES -> "Gamepad"
         else -> "Folder"
     }
 
@@ -127,320 +91,251 @@ object AppCategory {
         "Diamond", "Brush", "Build", "Explore", "Forum",
         "Headphones", "LocalCafe", "Movie", "Newspaper", "Science"
     )
+
+    // For test and general backward-compatibility/iterability
+    val entries: List<String> = FIXED
 }
 
-/**
- * Categorization rules based on Android's ApplicationInfo.category
- * and common package name patterns.
- * Returns a String category ID so the AI / heuristics can use any taxonomy.
- */
 object AppCategorizer {
 
-    /**
-     * Enhanced categorization rule with optional semantic refinements:
-     * - [bigramContext]: bonus +15 when a second token co-occurs (e.g. "music" + "player")
-     * - [negativePatterns]: penalty -30 when false-positive tokens are present
-     *   (e.g. "play" should NOT match "google.android.play" → Play Store)
-     */
-    private data class CategoryRule(
-        val pattern: String,
-        val category: String,
-        val baseScore: Int = 10,
-        val bigramContext: String? = null,
-        val negativePatterns: List<String>? = null
-    )
-
     private val exactPackageCategories = mapOf(
-        // Prevent misclassification of well-known ambiguous packages
-        "com.android.vending" to "shopping",
-        "com.facebook.pages.app" to "social",
-        "com.google.android.apps.photos" to "creativity",
-        "com.google.android.youtube" to AppCategory.STREAMING,
-        "com.google.android.play.games" to AppCategory.GAMES,
-        // Productivity — exact matches for apps whose packageName is misleading
-        "com.notion.android" to "productivity",
-        "md.obsidian" to "productivity",
-        "com.todoist" to "productivity",
-        "com.ticktick.task" to "productivity",
-        "com.microsoft.todos" to "productivity",
-        "com.google.android.keep" to "productivity",
-        // Health / Fitness
-        "com.google.android.apps.fitness" to "health",
-        "com.strava" to "health",
-        "com.myfitnesspal.android" to "health",
-        // Travel — exact
-        "com.booking" to "travel",
-        "com.airbnb.android" to "travel",
-        "com.tripadvisor.tripadvisor" to "travel",
-        // LATAM fintech
-        "com.bcp.innovacxion.yapeapp" to AppCategory.WALLETS,
-        "pe.interbank.mobilebanking" to AppCategory.WALLETS,
-        "com.bbva.nxt_peru" to AppCategory.WALLETS,
-        "ar.com.uala" to AppCategory.WALLETS,
-        "com.nubank" to AppCategory.WALLETS,
-        "com.mercadopago.wallet" to AppCategory.WALLETS,
-        // LATAM delivery
+        // Compras
+        "com.bcp.innovacxion.yapeapp" to AppCategory.COMPRAS,
+        "pe.interbank.mobilebanking" to AppCategory.COMPRAS,
+        "com.bbva.nxt_peru" to AppCategory.COMPRAS,
+        "ar.com.uala" to AppCategory.COMPRAS,
+        "com.nubank" to AppCategory.COMPRAS,
+        "com.mercadopago.wallet" to AppCategory.COMPRAS,
         "com.rappi" to AppCategory.COMPRAS,
         "com.pedidosya" to AppCategory.COMPRAS,
-        "com.cornershopapp.shopper" to AppCategory.COMPRAS
+        "com.cornershopapp.shopper" to AppCategory.COMPRAS,
+        "pe.plin" to AppCategory.COMPRAS,
+
+        // Multimedia
+        "com.google.android.youtube" to AppCategory.MULTIMEDIA,
+        "com.netflix.mediaclient" to AppCategory.MULTIMEDIA,
+        "com.spotify.music" to AppCategory.MULTIMEDIA,
+        "com.maxmpz.audioplayer" to AppCategory.MULTIMEDIA,
+
+        // Herramientas
+        "com.notion.android" to AppCategory.HERRAMIENTAS,
+        "md.obsidian" to AppCategory.HERRAMIENTAS,
+        "com.todoist" to AppCategory.HERRAMIENTAS,
+        "com.ticktick.task" to AppCategory.HERRAMIENTAS,
+        "com.microsoft.todos" to AppCategory.HERRAMIENTAS,
+        "com.google.android.keep" to AppCategory.HERRAMIENTAS,
+        "com.google.android.apps.docs" to AppCategory.HERRAMIENTAS,
+        "com.google.android.apps.sheets" to AppCategory.HERRAMIENTAS,
+        "com.google.android.apps.slides" to AppCategory.HERRAMIENTAS,
+        "com.google.android.apps.photos" to AppCategory.HERRAMIENTAS,
+        "com.niksoftware.snapseed" to AppCategory.HERRAMIENTAS,
+        "com.booking" to AppCategory.HERRAMIENTAS,
+        "com.airbnb.android" to AppCategory.HERRAMIENTAS,
+        "com.tripadvisor.tripadvisor" to AppCategory.HERRAMIENTAS,
+        "com.google.android.play.games" to AppCategory.GAMES
     )
 
-    private val categoryRules = listOf(
-        // ── Wallets / Crypto ───────────────────────────────
-        CategoryRule("binance", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("coinbase", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("yape", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("paypal", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("lemon", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("wise", AppCategory.WALLETS, baseScore = 20, negativePatterns = listOf("otherwise")),
-        CategoryRule("mercadopago", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("crypto", AppCategory.WALLETS, baseScore = 16),
-        CategoryRule("wallet", AppCategory.WALLETS, baseScore = 16, negativePatterns = listOf("wallpaper")),
-        CategoryRule("blockchain", AppCategory.WALLETS, baseScore = 16),
-        CategoryRule("ledger", AppCategory.WALLETS, baseScore = 16),
-        CategoryRule("metamask", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("trust", AppCategory.WALLETS, baseScore = 16, bigramContext = "wallet"),
-        CategoryRule("exodus", AppCategory.WALLETS, baseScore = 16),
-        CategoryRule("monero", AppCategory.WALLETS, baseScore = 16),
-        CategoryRule("nequi", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("daviplata", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("nubank", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("uala", AppCategory.WALLETS, baseScore = 20),
-        CategoryRule("plin", AppCategory.WALLETS, baseScore = 20),
-
-        // ── Compras / E-commerce / Delivery ────────────────
-        CategoryRule("rappi", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("mercadolibre", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("amazon", AppCategory.COMPRAS, baseScore = 20, negativePatterns = listOf("music", "video", "kindle")),
-        CategoryRule("aliexpress", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("pedidosya", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("ubereats", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("doordash", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("grubhub", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("delivery", AppCategory.COMPRAS, baseScore = 14),
-        CategoryRule("shop", AppCategory.COMPRAS, baseScore = 12, negativePatterns = listOf("workshop")),
-        CategoryRule("store", AppCategory.COMPRAS, baseScore = 10, negativePatterns = listOf("neo.store", "restore")),
-        CategoryRule("shein", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("temu", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("ebay", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("wish", AppCategory.COMPRAS, baseScore = 16),
-        CategoryRule("glovo", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("cornershop", AppCategory.COMPRAS, baseScore = 20),
-        CategoryRule("ifood", AppCategory.COMPRAS, baseScore = 20),
-
-        // ── Dev (heavy dev tools) ──────────────────────────
-        CategoryRule("termux", AppCategory.DEV, baseScore = 20),
-        CategoryRule("fdroid", AppCategory.DEV, baseScore = 20),
-        CategoryRule("github", AppCategory.DEV, baseScore = 20),
-        CategoryRule("gitlab", AppCategory.DEV, baseScore = 20),
-        CategoryRule("acode", AppCategory.DEV, baseScore = 20),
-        CategoryRule("neo.store", AppCategory.DEV, baseScore = 20),
-        CategoryRule("terminal", AppCategory.DEV, baseScore = 16),
-        CategoryRule("docker", AppCategory.DEV, baseScore = 16),
-        CategoryRule("git", AppCategory.DEV, baseScore = 16, negativePatterns = listOf("digital")),
-        CategoryRule("editor", AppCategory.DEV, baseScore = 12, bigramContext = "code"),
-        CategoryRule("ide", AppCategory.DEV, baseScore = 14),
-        CategoryRule("code", AppCategory.DEV, baseScore = 12, negativePatterns = listOf("qrcode", "barcode", "decode")),
-        CategoryRule("dev", AppCategory.DEV, baseScore = 10, negativePatterns = listOf("device", "devocional")),
-        CategoryRule("obtainium", AppCategory.DEV, baseScore = 20),
-        CategoryRule("revanced", AppCategory.DEV, baseScore = 16),
-
-        // ── Development (general) ──────────────────────────
-        CategoryRule("database", "development"),
-        CategoryRule("sql", "development"),
-
-        // ── Graphics / Creativity ──────────────────────────
-        CategoryRule("gallery", "creativity"),
-        CategoryRule("photo", "creativity", negativePatterns = listOf("photon")),
-        CategoryRule("photos", "creativity", baseScore = 14),
-        CategoryRule("camera", "creativity"),
-        CategoryRule("draw", "creativity"),
-        CategoryRule("paint", "creativity"),
-        CategoryRule("image", "creativity", bigramContext = "editor"),
-        CategoryRule("sketch", "creativity"),
-        CategoryRule("canva", "creativity"),
-        CategoryRule("snapseed", "creativity", baseScore = 16),
-        CategoryRule("lightroom", "creativity", baseScore = 16),
-        CategoryRule("figma", "creativity", baseScore = 16),
-
-        // ── Browsers ───────────────────────────────────────
-        CategoryRule("browser", "browsers"),
-        CategoryRule("chrome", "browsers"),
-        CategoryRule("firefox", "browsers"),
-        CategoryRule("brave", "browsers", bigramContext = "browser"),
-
-        // ── Social / Internet ──────────────────────────────
-        CategoryRule("mail", "productivity", negativePatterns = listOf("mailspring")),
-        CategoryRule("email", "productivity"),
-        CategoryRule("gmail", "productivity"),
-        CategoryRule("slack", "productivity"),
-        CategoryRule("notion", "productivity"),
-        CategoryRule("trello", "productivity"),
-        CategoryRule("asana", "productivity"),
-        CategoryRule("linear", "productivity"),
-        CategoryRule("todoist", "productivity"),
-        CategoryRule("telegram", "social"),
-        CategoryRule("whatsapp", "social"),
-        CategoryRule("discord", "social"),
-        CategoryRule("twitter", "social"),
-        CategoryRule("reddit", "social"),
-        CategoryRule("instagram", "social"),
-        CategoryRule("messenger", "social", negativePatterns = listOf("sms")),
-        CategoryRule("signal", "social", bigramContext = "messenger"),
-        CategoryRule("facebook", "social"),
-        CategoryRule("pages", "social"),
-        CategoryRule("threads", "social", baseScore = 14),
-        CategoryRule("mastodon", "social", baseScore = 16),
-        CategoryRule("bluesky", "social", baseScore = 16),
-        CategoryRule("linkedin", "social", baseScore = 14),
-
-        // ── Shopping ───────────────────────────────────────
-        CategoryRule("store", "shopping", negativePatterns = listOf("neo.store", "restore")),
-        CategoryRule("vending", "shopping", baseScore = 14),
-
-        // ── Games ──────────────────────────────────────────
-        CategoryRule("game", "games", baseScore = 14),
-        CategoryRule("games", "games", baseScore = 16),
-        CategoryRule("play", "games", baseScore = 5, negativePatterns = listOf("google", "display", "player")),
-
-        // ── Music ──────────────────────────────────────────
-        CategoryRule("music", AppCategory.MUSIC, baseScore = 14, bigramContext = "player"),
-        CategoryRule("spotify", AppCategory.MUSIC, baseScore = 16),
-        CategoryRule("deezer", AppCategory.MUSIC, baseScore = 16),
-        CategoryRule("tidal", AppCategory.MUSIC, baseScore = 16),
-        CategoryRule("apple.music", AppCategory.MUSIC, baseScore = 16),
-        CategoryRule("amazon.music", AppCategory.MUSIC, baseScore = 16),
-        CategoryRule("podcast", AppCategory.MUSIC, baseScore = 14),
-        CategoryRule("audio", AppCategory.MUSIC, baseScore = 14, negativePatterns = listOf("audiobook")),
-        CategoryRule("soundcloud", AppCategory.MUSIC, baseScore = 16),
-        CategoryRule("youtube.music", AppCategory.MUSIC, baseScore = 20),
-
-        // ── Streaming / Video ──────────────────────────────
-        CategoryRule("video", AppCategory.STREAMING, baseScore = 14, negativePatterns = listOf("editor")),
-        CategoryRule("youtube", AppCategory.STREAMING, baseScore = 16, negativePatterns = listOf("music")),
-        CategoryRule("vlc", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("netflix", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("tiktok", AppCategory.STREAMING, baseScore = 14),
-        CategoryRule("prime.video", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("disney", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("hbo", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("twitch", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("crunchyroll", AppCategory.STREAMING, baseScore = 16),
-        CategoryRule("plex", AppCategory.STREAMING, baseScore = 16),
-
-        // ── Health / Fitness ───────────────────────────────
-        CategoryRule("fitness", "health", baseScore = 14),
-        CategoryRule("workout", "health", baseScore = 14),
-        CategoryRule("health", "health", baseScore = 12),
-        CategoryRule("meditation", "health", baseScore = 14),
-        CategoryRule("strava", "health", baseScore = 16),
-        CategoryRule("fasting", "health", baseScore = 14),
-
-        // ── System / Utilities ─────────────────────────────
-        CategoryRule("settings", "utilities", baseScore = 18),
-        CategoryRule("monitor", "utilities"),
-        CategoryRule("filemanager", "utilities"),
-        CategoryRule("files", "utilities"),
-        CategoryRule("manager", "utilities", baseScore = 8, negativePatterns = listOf("password")),
-        CategoryRule("updater", "utilities"),
-        CategoryRule("calculator", "utilities", baseScore = 14),
-        CategoryRule("calc", "utilities"),
-        CategoryRule("clock", "utilities"),
-        CategoryRule("alarm", "utilities"),
-        CategoryRule("calendar", "productivity"),
-        CategoryRule("notes", "productivity"),
-        CategoryRule("weather", "utilities"),
-        CategoryRule("maps", "travel", baseScore = 14),
-        CategoryRule("translate", "utilities"),
-        CategoryRule("compass", "travel"),
-        CategoryRule("flashlight", "utilities"),
-        CategoryRule("recorder", "utilities"),
-        CategoryRule("contacts", "social"),
-        CategoryRule("phone", "social", negativePatterns = listOf("headphone")),
-        CategoryRule("dialer", "social"),
-        CategoryRule("messages", "social"),
-        CategoryRule("sms", "social"),
-        CategoryRule("vpn", "utilities", baseScore = 14),
-        CategoryRule("password", "utilities", baseScore = 14),
-        CategoryRule("authenticator", "utilities", baseScore = 16),
-        CategoryRule("backup", "utilities", baseScore = 12),
-        CategoryRule("cleaner", "utilities", baseScore = 12),
-
-        // ── Travel ─────────────────────────────────────────
-        CategoryRule("uber", "travel", baseScore = 16, negativePatterns = listOf("ubereats")),
-        CategoryRule("lyft", "travel", baseScore = 16),
-        CategoryRule("booking", "travel", baseScore = 16),
-        CategoryRule("airbnb", "travel", baseScore = 16),
-        CategoryRule("flight", "travel", baseScore = 14),
-        CategoryRule("airline", "travel", baseScore = 14),
-        CategoryRule("didi", "travel", baseScore = 16),
-        CategoryRule("cabify", "travel", baseScore = 16),
-        CategoryRule("indriver", "travel", baseScore = 16)
+    private data class KeywordRule(
+        val keyword: String,
+        val category: String,
+        val exactToken: Boolean = true,
+        val negativeKeywords: List<String> = emptyList()
     )
 
-    /**
-     * Categorize an app based on its package name, Android category info,
-     * and whether it is a system app.
-     */
+    private val keywordRules = listOf(
+        // Compras
+        KeywordRule("binance", AppCategory.COMPRAS),
+        KeywordRule("coinbase", AppCategory.COMPRAS),
+        KeywordRule("yape", AppCategory.COMPRAS),
+        KeywordRule("paypal", AppCategory.COMPRAS),
+        KeywordRule("lemon", AppCategory.COMPRAS),
+        KeywordRule("wise", AppCategory.COMPRAS),
+        KeywordRule("mercadopago", AppCategory.COMPRAS),
+        KeywordRule("crypto", AppCategory.COMPRAS),
+        KeywordRule("wallet", AppCategory.COMPRAS, exactToken = false, negativeKeywords = listOf("wallpaper")),
+        KeywordRule("blockchain", AppCategory.COMPRAS),
+        KeywordRule("ledger", AppCategory.COMPRAS),
+        KeywordRule("metamask", AppCategory.COMPRAS),
+        KeywordRule("trust", AppCategory.COMPRAS, exactToken = false),
+        KeywordRule("exodus", AppCategory.COMPRAS),
+        KeywordRule("monero", AppCategory.COMPRAS),
+        KeywordRule("nequi", AppCategory.COMPRAS),
+        KeywordRule("daviplata", AppCategory.COMPRAS),
+        KeywordRule("nubank", AppCategory.COMPRAS),
+        KeywordRule("uala", AppCategory.COMPRAS),
+        KeywordRule("plin", AppCategory.COMPRAS),
+        KeywordRule("rappi", AppCategory.COMPRAS),
+        KeywordRule("mercadolibre", AppCategory.COMPRAS),
+        KeywordRule("amazon", AppCategory.COMPRAS, negativeKeywords = listOf("music", "video", "kindle")),
+        KeywordRule("aliexpress", AppCategory.COMPRAS),
+        KeywordRule("pedidosya", AppCategory.COMPRAS),
+        KeywordRule("ubereats", AppCategory.COMPRAS),
+        KeywordRule("doordash", AppCategory.COMPRAS),
+        KeywordRule("grubhub", AppCategory.COMPRAS),
+        KeywordRule("delivery", AppCategory.COMPRAS),
+        KeywordRule("shop", AppCategory.COMPRAS, exactToken = false, negativeKeywords = listOf("workshop")),
+        KeywordRule("store", AppCategory.COMPRAS, exactToken = false, negativeKeywords = listOf("restore", "play")),
+        KeywordRule("shein", AppCategory.COMPRAS),
+        KeywordRule("temu", AppCategory.COMPRAS),
+        KeywordRule("ebay", AppCategory.COMPRAS),
+        KeywordRule("wish", AppCategory.COMPRAS),
+        KeywordRule("glovo", AppCategory.COMPRAS),
+        KeywordRule("cornershop", AppCategory.COMPRAS),
+        KeywordRule("ifood", AppCategory.COMPRAS),
+        KeywordRule("vending", AppCategory.COMPRAS),
+
+        // Multimedia
+        KeywordRule("spotify", AppCategory.MULTIMEDIA),
+        KeywordRule("deezer", AppCategory.MULTIMEDIA),
+        KeywordRule("tidal", AppCategory.MULTIMEDIA),
+        KeywordRule("podcast", AppCategory.MULTIMEDIA),
+        KeywordRule("audio", AppCategory.MULTIMEDIA, exactToken = false, negativeKeywords = listOf("audiobook")),
+        KeywordRule("soundcloud", AppCategory.MULTIMEDIA),
+        KeywordRule("youtube", AppCategory.MULTIMEDIA),
+        KeywordRule("netflix", AppCategory.MULTIMEDIA),
+        KeywordRule("vlc", AppCategory.MULTIMEDIA),
+        KeywordRule("tiktok", AppCategory.MULTIMEDIA),
+        KeywordRule("disney", AppCategory.MULTIMEDIA),
+        KeywordRule("hbo", AppCategory.MULTIMEDIA),
+        KeywordRule("twitch", AppCategory.MULTIMEDIA),
+        KeywordRule("crunchyroll", AppCategory.MULTIMEDIA),
+        KeywordRule("plex", AppCategory.MULTIMEDIA),
+        KeywordRule("video", AppCategory.MULTIMEDIA, exactToken = false, negativeKeywords = listOf("editor")),
+        KeywordRule("music", AppCategory.MULTIMEDIA, exactToken = false),
+        KeywordRule("player", AppCategory.MULTIMEDIA, exactToken = false),
+
+        // Games
+        KeywordRule("game", AppCategory.GAMES, exactToken = false),
+        KeywordRule("games", AppCategory.GAMES, exactToken = false),
+        KeywordRule("play", AppCategory.GAMES, exactToken = true, negativeKeywords = listOf("google", "display")),
+
+        // Herramientas
+        KeywordRule("browser", AppCategory.HERRAMIENTAS),
+        KeywordRule("chrome", AppCategory.HERRAMIENTAS),
+        KeywordRule("firefox", AppCategory.HERRAMIENTAS),
+        KeywordRule("opera", AppCategory.HERRAMIENTAS),
+        KeywordRule("edge", AppCategory.HERRAMIENTAS),
+        KeywordRule("brave", AppCategory.HERRAMIENTAS),
+        KeywordRule("notion", AppCategory.HERRAMIENTAS),
+        KeywordRule("obsidian", AppCategory.HERRAMIENTAS),
+        KeywordRule("todoist", AppCategory.HERRAMIENTAS),
+        KeywordRule("ticktick", AppCategory.HERRAMIENTAS),
+        KeywordRule("keep", AppCategory.HERRAMIENTAS),
+        KeywordRule("excel", AppCategory.HERRAMIENTAS),
+        KeywordRule("word", AppCategory.HERRAMIENTAS),
+        KeywordRule("office", AppCategory.HERRAMIENTAS),
+        KeywordRule("drive", AppCategory.HERRAMIENTAS),
+        KeywordRule("docs", AppCategory.HERRAMIENTAS),
+        KeywordRule("sheets", AppCategory.HERRAMIENTAS),
+        KeywordRule("slides", AppCategory.HERRAMIENTAS),
+        KeywordRule("calendar", AppCategory.HERRAMIENTAS),
+        KeywordRule("notes", AppCategory.HERRAMIENTAS),
+        KeywordRule("termux", AppCategory.HERRAMIENTAS),
+        KeywordRule("fdroid", AppCategory.HERRAMIENTAS),
+        KeywordRule("github", AppCategory.HERRAMIENTAS),
+        KeywordRule("gitlab", AppCategory.HERRAMIENTAS),
+        KeywordRule("acode", AppCategory.HERRAMIENTAS),
+        KeywordRule("terminal", AppCategory.HERRAMIENTAS),
+        KeywordRule("docker", AppCategory.HERRAMIENTAS),
+        KeywordRule("git", AppCategory.HERRAMIENTAS, exactToken = true, negativeKeywords = listOf("digital")),
+        KeywordRule("ide", AppCategory.HERRAMIENTAS),
+        KeywordRule("code", AppCategory.HERRAMIENTAS, exactToken = true, negativeKeywords = listOf("qrcode", "barcode", "decode")),
+        KeywordRule("dev", AppCategory.HERRAMIENTAS, exactToken = true, negativeKeywords = listOf("device", "devocional")),
+        KeywordRule("obtainium", AppCategory.HERRAMIENTAS),
+        KeywordRule("revanced", AppCategory.HERRAMIENTAS),
+        KeywordRule("maps", AppCategory.HERRAMIENTAS),
+        KeywordRule("gps", AppCategory.HERRAMIENTAS),
+        KeywordRule("uber", AppCategory.HERRAMIENTAS, negativeKeywords = listOf("ubereats")),
+        KeywordRule("lyft", AppCategory.HERRAMIENTAS),
+        KeywordRule("didi", AppCategory.HERRAMIENTAS),
+        KeywordRule("cabify", AppCategory.HERRAMIENTAS),
+        KeywordRule("indriver", AppCategory.HERRAMIENTAS),
+        KeywordRule("waze", AppCategory.HERRAMIENTAS),
+        KeywordRule("transit", AppCategory.HERRAMIENTAS),
+        KeywordRule("booking", AppCategory.HERRAMIENTAS),
+        KeywordRule("airbnb", AppCategory.HERRAMIENTAS),
+        KeywordRule("flight", AppCategory.HERRAMIENTAS),
+        KeywordRule("airline", AppCategory.HERRAMIENTAS),
+        KeywordRule("settings", AppCategory.HERRAMIENTAS),
+        KeywordRule("monitor", AppCategory.HERRAMIENTAS),
+        KeywordRule("filemanager", AppCategory.HERRAMIENTAS),
+        KeywordRule("files", AppCategory.HERRAMIENTAS),
+        KeywordRule("manager", AppCategory.HERRAMIENTAS, exactToken = true, negativeKeywords = listOf("password")),
+        KeywordRule("updater", AppCategory.HERRAMIENTAS),
+        KeywordRule("calculator", AppCategory.HERRAMIENTAS),
+        KeywordRule("calc", AppCategory.HERRAMIENTAS, exactToken = false),
+        KeywordRule("clock", AppCategory.HERRAMIENTAS),
+        KeywordRule("alarm", AppCategory.HERRAMIENTAS),
+        KeywordRule("weather", AppCategory.HERRAMIENTAS),
+        KeywordRule("translate", AppCategory.HERRAMIENTAS),
+        KeywordRule("flashlight", AppCategory.HERRAMIENTAS),
+        KeywordRule("recorder", AppCategory.HERRAMIENTAS),
+        KeywordRule("vpn", AppCategory.HERRAMIENTAS),
+        KeywordRule("password", AppCategory.HERRAMIENTAS),
+        KeywordRule("authenticator", AppCategory.HERRAMIENTAS),
+        KeywordRule("backup", AppCategory.HERRAMIENTAS),
+        KeywordRule("cleaner", AppCategory.HERRAMIENTAS),
+        KeywordRule("database", AppCategory.HERRAMIENTAS),
+        KeywordRule("sql", AppCategory.HERRAMIENTAS),
+        KeywordRule("gallery", AppCategory.HERRAMIENTAS),
+        KeywordRule("photo", AppCategory.HERRAMIENTAS, exactToken = false, negativeKeywords = listOf("photon")),
+        KeywordRule("photos", AppCategory.HERRAMIENTAS),
+        KeywordRule("camera", AppCategory.HERRAMIENTAS),
+        KeywordRule("draw", AppCategory.HERRAMIENTAS),
+        KeywordRule("paint", AppCategory.HERRAMIENTAS),
+        KeywordRule("image", AppCategory.HERRAMIENTAS),
+        KeywordRule("sketch", AppCategory.HERRAMIENTAS),
+        KeywordRule("canva", AppCategory.HERRAMIENTAS),
+        KeywordRule("snapseed", AppCategory.HERRAMIENTAS),
+        KeywordRule("lightroom", AppCategory.HERRAMIENTAS),
+        KeywordRule("figma", AppCategory.HERRAMIENTAS),
+        KeywordRule("fitness", AppCategory.HERRAMIENTAS),
+        KeywordRule("workout", AppCategory.HERRAMIENTAS),
+        KeywordRule("health", AppCategory.HERRAMIENTAS),
+        KeywordRule("meditation", AppCategory.HERRAMIENTAS),
+        KeywordRule("strava", AppCategory.HERRAMIENTAS),
+        KeywordRule("fasting", AppCategory.HERRAMIENTAS),
+        KeywordRule("mail", AppCategory.HERRAMIENTAS),
+        KeywordRule("email", AppCategory.HERRAMIENTAS),
+        KeywordRule("gmail", AppCategory.HERRAMIENTAS),
+        KeywordRule("slack", AppCategory.HERRAMIENTAS),
+        KeywordRule("trello", AppCategory.HERRAMIENTAS),
+        KeywordRule("asana", AppCategory.HERRAMIENTAS),
+        KeywordRule("linear", AppCategory.HERRAMIENTAS)
+    )
+
     fun categorize(packageName: String, androidCategory: Int, isSystemApp: Boolean = false): String {
         if (isSystemApp) return AppCategory.SYSTEM
 
         val lowerPkg = packageName.lowercase()
         exactPackageCategories[lowerPkg]?.let { return it }
 
-        val bestMatch = categoryRules
-            .mapNotNull { rule ->
-                scoreRule(lowerPkg, rule)?.let { rule.category to it }
-            }
-            .groupBy({ it.first }, { it.second })
-            .mapValues { (_, scores) -> scores.maxOrNull() ?: 0 }
-            .maxByOrNull { it.value }
+        // Tokenize package name
+        val tokens = lowerPkg.split('.', '_', '-', '/')
 
-        if (bestMatch != null && bestMatch.value > 0) {
-            return bestMatch.key
+        for (rule in keywordRules) {
+            val negativeMatch = rule.negativeKeywords.any { neg -> lowerPkg.contains(neg) }
+            if (negativeMatch) continue
+
+            val isMatch = if (rule.exactToken) {
+                tokens.any { it == rule.keyword }
+            } else {
+                tokens.any { it.contains(rule.keyword) }
+            }
+
+            if (isMatch) {
+                return rule.category
+            }
         }
 
-        // Fall back to Android's built-in category
+        // Fall back to Android's built-in category mapping cleanly to our 5 target categories
         return when (androidCategory) {
             android.content.pm.ApplicationInfo.CATEGORY_GAME -> AppCategory.GAMES
-            android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> AppCategory.MUSIC
-            android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> AppCategory.STREAMING
-            android.content.pm.ApplicationInfo.CATEGORY_IMAGE -> "creativity"
-            android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> AppCategory.SOCIAL
-            android.content.pm.ApplicationInfo.CATEGORY_NEWS -> "browsers"
-            android.content.pm.ApplicationInfo.CATEGORY_MAPS -> "travel"
-            android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> AppCategory.PRODUCTIVITY
+            android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> AppCategory.MULTIMEDIA
+            android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> AppCategory.MULTIMEDIA
+            android.content.pm.ApplicationInfo.CATEGORY_MAPS -> AppCategory.HERRAMIENTAS
+            android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> AppCategory.HERRAMIENTAS
             else -> AppCategory.ALL
         }
-    }
-
-    /**
-     * Score a rule against a package name with three refinements:
-     * 1. Exact token match bonus (+20) — "music" in "com.app.music" vs substring in "communist"
-     * 2. Bi-gram context bonus (+15) — "trust" scores higher when "wallet" co-occurs
-     * 3. Negative pattern penalty (-30) — "play" is suppressed when "google" co-occurs
-     */
-    private fun scoreRule(packageName: String, rule: CategoryRule): Int? {
-        if (!packageName.contains(rule.pattern)) return null
-
-        // Negative patterns: if any match, strongly penalize or suppress
-        val negativePenalty = rule.negativePatterns?.let { negatives ->
-            if (negatives.any { packageName.contains(it) }) -30 else 0
-        } ?: 0
-
-        // Bi-gram context: bonus when a related token co-occurs
-        val bigramBonus = rule.bigramContext?.let { ctx ->
-            if (packageName.contains(ctx)) 15 else 0
-        } ?: 0
-
-        val exactTokenMatch = packageName
-            .split('.', '_', '-', '/')
-            .any { token -> token == rule.pattern }
-
-        val exactTokenBonus = if (exactTokenMatch) 20 else 0
-        val substringBonus = rule.pattern.length
-
-        val total = rule.baseScore + exactTokenBonus + substringBonus + bigramBonus + negativePenalty
-        return if (total > 0) total else null
     }
 }

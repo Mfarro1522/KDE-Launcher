@@ -104,12 +104,15 @@ fun LauncherSettingsPanel(
     showAllHiddenTemporarily: Boolean = false,
     onToggleShowHidden: () -> Unit = {},
     onOpenAssistantSettings: () -> Unit = {},
+    onOpenXiaomiAssistantSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = LocalColors.current
     val accent = LocalLauncherAccent.current
     val scrollState = rememberScrollState()
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
+    var showAssistantDialog by remember { mutableStateOf(false) }
+
 
     Column(
         modifier = modifier
@@ -701,7 +704,7 @@ fun LauncherSettingsPanel(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onOpenAssistantSettings
+                    onClick = { showAssistantDialog = true }
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -728,7 +731,7 @@ fun LauncherSettingsPanel(
                     color = colors.onBackground
                 )
                 Text(
-                    text = "Si el asistente no responde al mantener Home, verifica que \"Google\" esté seleccionado como asistente digital en los ajustes del sistema.",
+                    text = "Toca para abrir la guía de configuración y resolver problemas de gestos (especialmente en Xiaomi / MIUI / HyperOS).",
                     style = LauncherTypography.bodySmall,
                     color = colors.onSurfaceVariant.copy(alpha = 0.6f)
                 )
@@ -740,6 +743,140 @@ fun LauncherSettingsPanel(
                 tint = accent.primary.copy(alpha = 0.7f)
             )
         }
+
+        if (showAssistantDialog) {
+            AlertDialog(
+                onDismissRequest = { showAssistantDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(accent.primaryBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Assistant,
+                                contentDescription = null,
+                                tint = accent.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Text(
+                            text = "Asistente de Voz",
+                            style = LauncherTypography.titleMedium,
+                            color = colors.onBackground
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Al cambiar de launcher, Android y las capas de personalización (como MIUI e HyperOS de Xiaomi) suelen desactivar temporalmente el gesto de mantener pulsado el botón de inicio.\n\nSigue estos pasos para solucionarlo:",
+                            style = LauncherTypography.bodyMedium,
+                            color = colors.onBackground
+                        )
+
+                        // Step 1 Card
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = colors.surfaceVariant.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, colors.border.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "1. Configurar aplicación predeterminada",
+                                    style = LauncherTypography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.onBackground
+                                )
+                                Text(
+                                    text = "Asegúrate de que 'Google' u otro asistente esté seleccionado como Asistente Digital predeterminado en el sistema.",
+                                    style = LauncherTypography.bodySmall,
+                                    color = colors.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                                Button(
+                                    onClick = {
+                                        onOpenAssistantSettings()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = accent.primary,
+                                        contentColor = colors.surface
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Abrir Ajustes de Android", style = LauncherTypography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+                        }
+
+                        // Step 2 Card (Xiaomi/MIUI Specific Warning/Action)
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = colors.surfaceVariant.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, colors.border.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "2. Activar gesto de Botón (Xiaomi / MIUI)",
+                                    style = LauncherTypography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.onBackground
+                                )
+                                Text(
+                                    text = "Xiaomi desactiva la opción 'Mantener pulsado Inicio'. Presiona abajo para abrir la pantalla de ajustes de botones del sistema y actívala manualmente.",
+                                    style = LauncherTypography.bodySmall,
+                                    color = colors.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                                Button(
+                                    onClick = {
+                                        onOpenXiaomiAssistantSettings()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = accent.primary,
+                                        contentColor = colors.surface
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Abrir Ajustes de Xiaomi", style = LauncherTypography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { showAssistantDialog = false }
+                    ) {
+                        Text("Cerrar", color = accent.primary, style = LauncherTypography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                },
+                containerColor = colors.surface,
+                shape = RoundedCornerShape(20.dp)
+            )
+        }
+
 
         // ── Divider ──────────────────────────────────────
         HorizontalDivider(color = colors.border.copy(alpha = 0.4f))

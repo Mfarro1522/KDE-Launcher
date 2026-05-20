@@ -6,6 +6,7 @@ import android.os.UserHandle
 import dev.vive.kdelauncher.data.WorkProfileApp
 import dev.vive.kdelauncher.data.model.AppCategory
 import dev.vive.kdelauncher.data.model.AppModel
+import dev.vive.kdelauncher.data.repository.IconDiskCache
 import dev.vive.kdelauncher.domain.repository.AppRepository
 import dev.vive.kdelauncher.domain.repository.WorkProfileManager
 import io.kotest.core.spec.style.FunSpec
@@ -15,11 +16,15 @@ import io.mockk.mockk
 
 class LoadAppsUseCaseTest : FunSpec({
 
+    val iconDiskCache = mockk<IconDiskCache>(relaxed = true) {
+        io.mockk.every { get(any(), any()) } returns null
+    }
+
     test("merges personal and work profile apps sorted by label") {
         val appRepository = FakeAppRepository(
             metadataApps = listOf(
-                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.SOCIAL),
-                AppModel("com.personal.notes", ".Main", "Notes", category = AppCategory.UTILITIES)
+                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.ALL),
+                AppModel("com.personal.notes", ".Main", "Notes", category = AppCategory.HERRAMIENTAS)
             )
         )
         val workHandle = mockk<UserHandle>(relaxed = true)
@@ -37,7 +42,7 @@ class LoadAppsUseCaseTest : FunSpec({
             )
         )
 
-        val (metadataApps, fullApps) = LoadAppsUseCase(appRepository, workProfileManager)(null)
+        val (metadataApps, fullApps) = LoadAppsUseCase(appRepository, workProfileManager, iconDiskCache)(null)
 
         metadataApps.map { it.label } shouldContainExactly listOf("Docs", "Mail", "Notes")
         fullApps.map { it.label } shouldContainExactly listOf("Docs", "Mail", "Notes")
@@ -47,12 +52,12 @@ class LoadAppsUseCaseTest : FunSpec({
     test("does not query work profile apps when there is no real work profile") {
         val appRepository = FakeAppRepository(
             metadataApps = listOf(
-                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.SOCIAL)
+                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.ALL)
             )
         )
         val workProfileManager = FakeWorkProfileManager(hasRealWorkProfile = false)
 
-        val (metadataApps, fullApps) = LoadAppsUseCase(appRepository, workProfileManager)(null)
+        val (metadataApps, fullApps) = LoadAppsUseCase(appRepository, workProfileManager, iconDiskCache)(null)
 
         metadataApps.map { it.packageName } shouldContainExactly listOf("com.personal.mail")
         fullApps.map { it.packageName } shouldContainExactly listOf("com.personal.mail")
@@ -66,7 +71,7 @@ class LoadAppsUseCaseTest : FunSpec({
 
         val appRepository = FakeAppRepository(
             metadataApps = listOf(
-                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.SOCIAL)
+                AppModel("com.personal.mail", ".Main", "Mail", category = AppCategory.ALL)
             ),
             iconsByPackage = mapOf("com.personal.mail" to personalBitmap)
         )
@@ -85,7 +90,7 @@ class LoadAppsUseCaseTest : FunSpec({
             workIconsByPackage = mapOf("com.work.docs" to workBitmap)
         )
 
-        val (_, fullApps) = LoadAppsUseCase(appRepository, workProfileManager)("pack.example")
+        val (_, fullApps) = LoadAppsUseCase(appRepository, workProfileManager, iconDiskCache)("pack.example")
 
         fullApps.first { it.packageName == "com.personal.mail" }.icon?.bitmap shouldBe personalBitmap
         fullApps.first { it.packageName == "com.work.docs" }.icon?.bitmap shouldBe workBitmap
